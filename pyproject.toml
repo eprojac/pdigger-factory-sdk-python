@@ -83,6 +83,11 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PT012"] # a stream is iterated inside pytest.raises
+# Keep the published Colab notebook in its original form.
+"notebooks/pDigger_Factory_3D_Tray_Reports.ipynb" = ["B905", "C408", "E501"]
+
+[tool.ruff.format]
+exclude = ["notebooks/pDigger_Factory_3D_Tray_Reports.ipynb"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["pdigger_factory_sdk"]
