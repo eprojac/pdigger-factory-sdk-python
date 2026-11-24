@@ -6,6 +6,9 @@ can read a file with a regular `for` loop.
 Simple mode gives you one report per tray. It lists the stones added, removed or moved and flags uncertain changes.
 Advanced mode gives you the events, frames and tracking evidence behind each report.
 
+[Explore a recorded tray in 3D](https://nbviewer.org/github/eprojac/pdigger-factory-sdk-python/blob/HEAD/notebooks/pDigger_Factory_3D_Tray_Reports.ipynb#tray-viewer)
+or [get the notebook and offline viewer](https://github.com/eprojac/pdigger-factory-sdk-python/tree/main/notebooks).
+
 ## Install
 
 Use Python 3.10 or later. Install the SDK in a virtual environment to try the examples.

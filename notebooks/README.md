@@ -1,11 +1,16 @@
 # 3D tray reports
 
-Compare a tray when it settles and just before it leaves. Rotate or zoom either 3D view to move both together.
-The table lists which stones the SDK marked as removed, added or moved, with a confidence score for each change.
+[Open the interactive 3D demo](https://nbviewer.org/github/eprojac/pdigger-factory-sdk-python/blob/HEAD/notebooks/pDigger_Factory_3D_Tray_Reports.ipynb#tray-viewer) to see tray 1 when it settled and just before it left. Drag or zoom either view to move both together. Hover over a stone to inspect it.
 
-Open the notebook in Colab on a standard CPU runtime and choose **Runtime → Run all** to try the sample recording.
+[![Two 3D views of the same tray, with removed stones in red, added stones in green and moved stones in blue](demo/tray-1.png)](https://nbviewer.org/github/eprojac/pdigger-factory-sdk-python/blob/HEAD/notebooks/pDigger_Factory_3D_Tray_Reports.ipynb#tray-viewer)
+
+The sample report lists 11 removals, 13 additions and 8 moves. The table below the plot gives the confidence score
+for each change. To explore the same view offline, download the [standalone HTML](demo/tray-1.html) and open it in
+your browser.
+
+## Run your own recording
+
+Open the notebook in Colab, set `SOURCE_MODE` to `upload`, `path` or `url`, and choose **Runtime → Run all**.
+For a path or URL, enter it in `RECORDING`. Pick a `REPORT_NUMBER` from the table and rerun the comparison cell.
+Set `EXPORT` to `True` to save the 3D view as HTML and the full report as JSON.
 [Open in Colab](https://colab.research.google.com/github/eprojac/pdigger-factory-sdk-python/blob/main/notebooks/pDigger_Factory_3D_Tray_Reports.ipynb) · [View the notebook on GitHub](pDigger_Factory_3D_Tray_Reports.ipynb)
-
-To use your own `.ndjson` or `.ndjson.gz` recording, set `SOURCE_MODE` to `upload`, `path` or `url`. For a path or
-URL, enter it in `RECORDING`. Choose a `REPORT_NUMBER` from the overview table and rerun the comparison cell.
-Set `EXPORT` to `True` in the last cell to save the 3D view as HTML and the full report as JSON.
