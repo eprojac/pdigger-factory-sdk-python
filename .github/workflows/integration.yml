@@ -34,7 +34,7 @@ jobs:
           python -m pip install --no-deps --no-build-isolation -e .
       - name: The published listing (the cache key)
         run: curl -fsS --retry 3 -o listing.json https://factory.pdigger.com/developers/data/recordings.json
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: recordings
           # one entry per published listing: saved again only when the recordings change
