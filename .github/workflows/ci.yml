@@ -84,7 +84,7 @@ jobs:
           python -m pip install --no-deps --no-build-isolation -e .
       - name: pdoc
         run: make docs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: api-reference
           path: site/
@@ -106,7 +106,7 @@ jobs:
           python -m venv /tmp/try
           /tmp/try/bin/pip install dist/*.whl
           /tmp/try/bin/python -c "import pdigger_factory_sdk as sdk; print(sdk.USER_AGENT)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
