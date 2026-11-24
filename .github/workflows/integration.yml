@@ -1,0 +1,66 @@
+name: Integration
+
+# The opt-in tests: weekly, the four published recordings replayed and compared with their published summaries; by
+# hand, optionally also read-only checks against a unit (observe=1 streams, dry_run=1 controls, never a real control).
+# A GitHub-hosted runner reaches only units with a public address; check a unit on a factory network with
+# `make integration` from a machine on that network.
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      unit_url:
+        description: "A unit to check read-only, e.g. http://factory-orin.local:8120 (empty: none)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  recordings:
+    name: The published recordings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - name: Install
+        run: |
+          python -m pip install -r requirements-test.txt
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: The published listing (the cache key)
+        run: curl -fsS --retry 3 -o listing.json https://factory.pdigger.com/developers/data/recordings.json
+      - uses: actions/cache@v4
+        with:
+          path: recordings
+          # one entry per published listing: saved again only when the recordings change
+          key: recordings-${{ hashFiles('listing.json') }}
+          restore-keys: recordings-
+      - name: Download the recordings (sha256 checked)
+        run: python tools/download_recordings.py recordings
+      - name: Replay them and compare the summaries
+        env:
+          PDIGGER_FACTORY_RECORDINGS: recordings
+        run: pytest -p no:cacheprovider -m integration tests/test_integration.py -k recording
+
+  unit:
+    name: A unit, read-only
+    if: github.event_name == 'workflow_dispatch' && inputs.unit_url != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install -r requirements-test.txt
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: Read-only checks
+        env:
+          PDIGGER_FACTORY_URL: ${{ inputs.unit_url }}
+        run: pytest -p no:cacheprovider -m integration tests/test_integration.py -k "not recording"

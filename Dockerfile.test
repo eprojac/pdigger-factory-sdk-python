@@ -1,0 +1,24 @@
+# The unit tests, as `make test` and CI run them, with no network:
+#   docker build -t pdigger-factory-sdk-python-test -f Dockerfile.test .
+#   docker run --rm --network none pdigger-factory-sdk-python-test
+# The base is Python 3.12.16 (python:3.12-slim), pinned by its digest; Dependabot proposes updates.
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_ROOT_USER_ACTION=ignore
+
+# the tests run as an unprivileged user that owns the source tree (caches and coverage data are written there)
+RUN useradd --create-home --uid 10001 tester && install -d -o tester /sdk
+WORKDIR /sdk
+
+COPY requirements-test.txt ./
+RUN pip install -r requirements-test.txt
+
+COPY --chown=tester . .
+RUN pip install --no-deps --no-build-isolation -e . && pip check
+
+USER tester
+CMD ["sh", "tools/test.sh"]

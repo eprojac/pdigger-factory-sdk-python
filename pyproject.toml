@@ -1,0 +1,113 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pdigger-factory-sdk"
+dynamic = ["version"]
+description = "pDigger Factory SDK: follow interpreted stone work from a factory camera as async events, activities and text."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "eprojac" }]
+keywords = ["pdigger", "factory", "computer-vision", "interpreter", "asyncio", "sse", "sdk"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
+dependencies = ["httpx>=0.27,<1"]
+
+[project.urls]
+Homepage = "https://factory.pdigger.com/developers/"
+Documentation = "https://factory.pdigger.com/developers/api/"
+Recordings = "https://factory.pdigger.com/developers/data/"
+Source = "https://github.com/eprojac/pdigger-factory-sdk-python"
+Changelog = "https://github.com/eprojac/pdigger-factory-sdk-python/blob/main/CHANGELOG.md"
+Issues = "https://github.com/eprojac/pdigger-factory-sdk-python/issues"
+
+[tool.hatch.version]
+path = "src/pdigger_factory_sdk/_version.py"
+
+[tool.hatch.build]
+dev-mode-dirs = ["src"] # an editable install is a .pth file to src/ (no build dependency beyond hatchling)
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pdigger_factory_sdk"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/examples",
+    "/docs",
+    "/fixtures",
+    "/spec",
+    "/tools",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/CONTRIBUTING.md",
+    "/TESTING.md",
+    "/RELEASING.md",
+    "/LICENSE",
+    "/NOTICE",
+    "/Makefile",
+    "/Dockerfile",
+    "/Dockerfile.test",
+    "/requirements-test.txt",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests", "examples", "tools"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4", "RUF", "PIE", "ASYNC", "PT"]
+ignore = [
+    "SIM108", # ternaries are not always clearer
+    "RUF022", # __all__ is grouped by meaning, not sorted
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PT012"] # a stream is iterated inside pytest.raises
+
+[tool.ruff.lint.isort]
+known-first-party = ["pdigger_factory_sdk"]
+
+[tool.mypy]
+strict = true
+python_version = "3.10"
+mypy_path = "src"
+files = ["src", "tests", "examples", "tools"]
+warn_unreachable = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "--strict-markers --strict-config -ra"
+markers = ["integration: opt-in checks against a server (PDIGGER_FACTORY_URL) or recordings (PDIGGER_FACTORY_RECORDINGS)"]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["pdigger_factory_sdk"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = true
+precision = 2

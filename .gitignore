@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# tools
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# the API reference (built by `make docs` and in CI)
+site/
+
+# the published recordings, downloaded for `make integration` (tools/download_recordings.py)
+/recordings/
+
+# editors and systems
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - name: Install
+        run: |
+          python -m pip install -r requirements-test.txt
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: ruff format
+        run: ruff format --check .
+      - name: ruff check
+        run: ruff check --output-format github .
+      - name: mypy --strict
+        run: mypy
+      - name: The models match the spec
+        run: python tools/gen_models.py --check
+
+  docker:
+    name: Unit tests in Docker (no network, 100 % coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: make test
+        run: make test
+      - name: The runtime image builds (its base is updated by Dependabot)
+        run: docker build -t pdigger-factory-sdk-python .
+
+  python:
+    name: Tests on Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - name: Install
+        run: |
+          python -m pip install -r requirements-test.txt
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: pytest
+        run: pytest -p no:cacheprovider --cov=pdigger_factory_sdk --cov-branch --cov-report=term-missing --cov-fail-under=100
+
+  docs:
+    name: API reference
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - name: Install
+        run: |
+          python -m pip install -r requirements-test.txt
+          python -m pip install --no-deps --no-build-isolation -e .
+      - name: pdoc
+        run: make docs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-reference
+          path: site/
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the sdist and the wheel
+        run: |
+          python -m pip install build==1.6.1
+          python -m build
+      - name: The wheel installs and imports
+        run: |
+          python -m venv /tmp/try
+          /tmp/try/bin/pip install dist/*.whl
+          /tmp/try/bin/python -c "import pdigger_factory_sdk as sdk; print(sdk.USER_AGENT)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

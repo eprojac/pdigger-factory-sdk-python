@@ -1,0 +1,10 @@
+pDigger Factory SDK for Python
+Copyright 2026 eprojac
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The API description in spec/ and the recorded data in fixtures/ are shared by the four languages of the pDigger
+Factory SDK (Go, Python, Rust, TypeScript). The API a pDigger Factory unit serves is eprojac's; its description in
+spec/ is under the Apache License 2.0 like the rest of this repository. The real recordings come from a pDigger
+Factory test unit or from an offline replay of its model's outputs, and the synthetic ones say so in their headers;
+face keypoints, appearance masks and depth textures are removed from the real ones (see each recording's header).
