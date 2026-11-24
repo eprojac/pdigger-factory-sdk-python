@@ -6,8 +6,8 @@
 make test
 ```
 
-`make test` builds `Dockerfile.test` (Python 3.12, pinned by digest, the tools pinned in `requirements-test.txt`) and
-runs it with `--network none`. `tools/test.sh` then runs, in order:
+`make test` builds a pinned Python 3.12 image with the versions in `requirements-test.txt`. It starts the container
+with networking disabled and runs `tools/test.sh`. The checks run in this order.
 
 1. `ruff format --check` and `ruff check`;
 2. `mypy --strict` over `src`, `tests`, `examples` and `tools`;
@@ -15,9 +15,9 @@ runs it with `--network none`. `tools/test.sh` then runs, in order:
 4. `pytest` with line and branch coverage of `pdigger_factory_sdk`, failing below 100 %;
 5. the API reference (pdoc).
 
-`make check` runs the same script in your environment. Time and randomness are injected everywhere, so no test sleeps
-for real (the longest real waits are a 10 ms timeout and a 5 ms `max_s` deadline: the SDK times `max_s` with an
-`asyncio.wait` timeout computed from the injected monotonic clock), and every test is deterministic.
+Run `make check` to use the same script in your local environment. The tests inject time and randomness. The longest
+real waits are a 10 ms timeout and a 5 ms `max_s` deadline, where `asyncio.wait` uses a timeout calculated from the
+injected monotonic clock.
 
 What the tests cover:
 

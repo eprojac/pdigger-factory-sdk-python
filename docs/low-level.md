@@ -1,8 +1,8 @@
 # The low level
 
-`factory.api` has one method for each operation of API v2 ([spec/openapi.yaml](../spec/openapi.yaml)), and
-`models` has a typed dataclass for each schema. `codec` decodes the packed buffers inside the layers. The levels above
-are built from these, and you can mix them: take an event from the interpreter, then read that frame's overlay here.
+Use `factory.api` to request a specific frame, fetch a model output or control the shared session. The 32 typed
+methods correspond to the [OpenAPI operations](../spec/openapi.yaml). The codec decodes packed maps, bitsets, depth
+and joint data.
 
 ```python
 frame = await api.get_frame("latest", layers=["overlay", "world"])

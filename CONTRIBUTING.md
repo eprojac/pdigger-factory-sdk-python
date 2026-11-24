@@ -1,9 +1,8 @@
 # Contributing
 
-Thank you for helping. This SDK is one of four (Go, Python, Rust, TypeScript) that follow one contract,
-[spec/SDK-DESIGN.md](spec/SDK-DESIGN.md), and must print the same text for the same recording. Behaviour is
-therefore changed in all four at once, by the maintainers: open an issue or a pull request here. `spec/`, `fixtures/`,
-`docs/BEHAVIOUR-20.20.md` and the shared pictures in `docs/img/` are shared copies; do not edit them here.
+All four SDKs follow the [same behaviour contract](spec/SDK-DESIGN.md) and [HTTP API](spec/openapi.yaml). The
+maintainers sync the specification, fixtures, camera measurements and architecture diagram from the shared project.
+Open an issue or pull request here to propose a change to these shared files.
 
 ## Set up
 
@@ -26,7 +25,7 @@ make test    # the same in Docker with no network, as CI runs it
   real: use `testing.FakeFactory`, its `FakeTime`, and the delay hooks to order races.
 - Golden tests: `tests/test_golden.py` replays every recording of `fixtures/recordings` (the folder, not a list) and
   compares the events, activities and summary with `fixtures/golden` byte for byte, through `Replay` and through the
-  live interpreter over the fake server. If they differ, the SDK is wrong, not the golden file.
+  live interpreter over the fake server. Investigate a mismatch in the SDK against the shared contract.
 
 ## Code
 
@@ -40,5 +39,5 @@ make test    # the same in Docker with no network, as CI runs it
 
 ## Pull requests
 
-Keep them small, with tests, and update `CHANGELOG.md` under an "Unreleased" heading. CI runs the lint, the Docker
-tests, the tests on Python 3.10, 3.11 and 3.13, the API reference and the package build.
+Describe the change, include its tests and add a user-facing note to the unreleased section of `CHANGELOG.md`. CI
+runs lint, the Docker suite, the Python compatibility matrix, the API reference and a package build.

@@ -1,8 +1,9 @@
-# Python: what is particular to this SDK
+# Python API conventions
 
-The four languages share their levels, their models and their sentences ([the four languages](../../README.md#the-four-languages)).
-This page is about what is Python's own: asyncio with plain loops beside it, streams as context managers, the fake unit
-in pytest, one error type with stable codes, and the standard logging module.
+<a id="python-what-is-particular-to-this-sdk"></a>
+
+Use ordinary loops for recording files and `asyncio` for live data. This guide covers stream lifetimes, exceptions,
+logging and testing with pytest.
 
 ## asyncio, and plain loops for files
 

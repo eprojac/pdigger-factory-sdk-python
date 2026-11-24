@@ -1,7 +1,8 @@
 # Streams
 
-`factory.streams` is the middle level: the session's frames as typed items, with the stream's bookkeeping done for
-you. It has three streams:
+Use a frame stream for a camera overlay, a feed of scene geometry or your own frame-by-frame analysis. Choose
+server-sent events for a continuous connection, long-poll for individual HTTP requests, or raw packets for model
+outputs. Open a stream through `factory.streams` and use it as an async context manager.
 
 | | Operation | For |
 |---|---|---|

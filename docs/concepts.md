@@ -1,24 +1,20 @@
 # Concepts
 
-What the unit does, and the words the SDK uses for it. The measurements behind the numbers here are in
-[BEHAVIOUR-20.20.md](BEHAVIOUR-20.20.md).
+A factory unit follows one camera or recording at a time. Its **world** is the tracker’s current view of the stones,
+hands and events. Use this guide to interpret frames, coordinate systems and changes to the shared session.
+[Measurements from the 20.20 unit](BEHAVIOUR-20.20.md).
 
 ## The unit and its API
 
-A pDigger Factory unit (on 20.20, a Jetson Orin NX on the factory network) watches one work area. A model reads every
-frame of the camera (the regions of the image, the hands and the body, the stones), and the Stable sim (the "world")
-turns those readings into a persistent record: stones that appear, are confirmed, are pushed, lifted, carried, placed
-or dropped, and what each hand is doing. The unit serves all of it over HTTP, as API v2
-([spec/openapi.yaml](../spec/openapi.yaml)), from plain events down to every model output. The base URL in these docs is
-`http://factory-orin.local:8120`. The client reads `PDIGGER_FACTORY_URL` when no URL is given.
+The 20.20 test unit is a Jetson Orin NX on the factory network. Its model detects hands, stones and image regions.
+The Stable simulation tracks them across frames. [API v2](../spec/openapi.yaml) serves both the detections and the
+tracking results. Set `PDIGGER_FACTORY_URL` to the unit’s base URL, such as `http://factory-orin.local:8120`.
 
 ## One shared session
 
-The unit interprets one thing at a time, and everybody sees the same thing: one **session** with one source, one
-playhead and one interpretation, shared by the unit's own page, the operators' screens and every SDK client. A
-`select` of another source or a `seek` starts a new session (a new `session` number) for everybody. That is why every
-control of `factory.session` says that it moves the session for every viewer, and why each one takes `dry_run=True`,
-which validates the control without applying it.
+The unit’s own page, the operators’ screens and SDK clients share one source and playhead. Selecting a source or
+seeking starts a new session and assigns a new `session` number. Each `factory.session` control accepts
+`dry_run=True` to preview its effect on viewers.
 
 ```python
 shared = await factory.session.clock()
@@ -53,16 +49,21 @@ A **source** is what the session can show. The API calls sources videos: `GET /a
   the camera's JPEG), live about 0.5 s behind the camera. `factory.cameras()` returns them, and `factory.live()` the
   first (or `live_unavailable`).
 
-Watching a camera (`session.watch(camera)`) starts a session at media time 0 and rate 1.0 with `state.live`:
-`{phase, warmup, since, lag}`. The phase is `connecting` until the camera's first frame (the worker's reason says why
-when it takes long: `connecting to the camera`, `the camera is not answering`), `warming` while the interpreter runs on
-the first `warmup` seconds of frames, which warm the world but are never released, stored or served, and then `live`.
-Every change of phase bumps `revision`, so the long-poll and the stream's `clock` event carry it;
-`session.until_live()` waits for `live` by reading the state every 0.25 s. From then on, frames are released as they
-are interpreted, at the camera's rate: `g` counts the session's camera frames from 0 (the warm-up's included, so the
-first shown is about 15 at 5 a second), `t` is a frame's arrival in seconds since `since`, and the playhead runs at
-1.0, `lag` behind the camera. Each live frame comes with the camera's own picture, the JPEG it was interpreted from
-(`session.picture(g)`, the newest 64 are kept); a recording has none.
+Call `session.watch(camera)` to start a camera session at media time zero and playback rate 1.0. Read `state.live`
+(`phase`, `warmup`, `since`, `lag`) to follow the connection.
+
+| Phase | What the unit is doing |
+| --- | --- |
+| `connecting` | Waiting for the camera’s first frame. The worker status explains a delay. |
+| `warming` | Feeding the first frames to the interpreter. The unit discards these frames after warm-up. |
+| `live` | Publishing each interpreted frame and its camera image. |
+
+Each transition increments the session revision and reaches clients through long-poll or a `clock` event.
+`session.until_live()` polls every 250 ms.
+
+Frame numbers start at zero and include warm-up. At five frames per second, the first visible frame is about 15.
+Media time measures seconds since the camera started, and the playhead trails the camera by its reported lag. The
+unit keeps the latest 64 camera JPEGs. Read one with `session.picture(g)`.
 
 A camera has no time. A select with a `time` is refused (`400 not_seekable`, field `time`), and so is a seek
 (`409 not_seekable`, field `video`): `session.watch(camera, at=...)` raises without sending the select, and

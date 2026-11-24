@@ -5,69 +5,50 @@ version follows [Semantic Versioning](https://semver.org/).
 
 ## [0.1.0] - Unreleased
 
-The first release, for API v2.2: what the 20.20 unit serves (build `claude-20261123-speckle7`: four recordings, six
-plant cameras, the stones' looks and the speckle answers).
+Initial SDK for API v2.2. The reference unit ran build `claude-20261123-speckle7` with four recordings and six plant
+cameras. It supplies stone appearance data and surface-pattern comparisons.
 
 ### Added
 
-- Tray reports (SDK-DESIGN.md 4.7), simple mode: one `TrayReport` per tray, from `Tray.report()`,
-  `interpreter.tray_reports()` (as each tray leaves a unit) and `Replay.tray_reports()` (every tray of a recording):
-  the stones removed, added and moved (`TrayChange`), when and where (each one's final place on the tray), and whether
-  that is the tray's whole account, as text (`describe()`) and as data (`to_dict()`).
-- The tray's open account as it leaves (`Tray.open`, `TrayOpen`, SDK-DESIGN.md 4.6.8), each fact's reason as a code
-  (`TrayFact.code`), and the tray stones' `first_place`, `left_place` and `touched`, which the report reads; with the
-  stones' looks, `identified` facts and the tray stones' `question`, `looks`, `by_look`, `look_lost` and `open`.
-- The unit's speckle answers (SDK-DESIGN.md 4.6.12, `world.speckle` since build `claude-20261123-speckle3`), read as a
-  tray's: `TraySpeckle` in `update.speckle`, `interpreter.speckle()` (the newest 1024) and `ReplayResult.speckle`, each
-  tray stone's part as `TrayStone.speckle` (`StoneSpeckle`: `score`, `second`, `clean`, `found`, `pair`, `same`), and
-  `describe_speckle_txt()`, the golden `speckle.txt`; `WorldLayer.speckle` (`WorldSpeckle`) is None when the answer
-  does not fit by value.
-- The leaving's speckle answer in every tray report (SDK-DESIGN.md 4.6.13, tray rules version 8): the stones it pairs
-  are sure, confirmed on their world stone or linked again (`identified` facts with codes `speckle_same`,
-  `speckle_moved` and `speckle_found`; `TrayStone.by_speckle`); each tray stone's `evidence` as its tray leaves
-  (`found`, `not_found` or `undecided`); and every report change's `confidence` (`TrayChange.confidence`, from the
-  measured constants `CONFIDENCE` and `MOVED_CONFIDENCE`), at the end of each change line of `describe()`.
-- `FactoryClient`: the async client (httpx), with retries and full-jitter backoff, timeouts, a bearer token, extra
-  headers, an injectable transport, and injectable time and randomness.
+#### Tray reports and tracking
+
+- Read one `TrayReport` for each completed tray, live or from a recording. Each change carries a stone ID, a time, a
+  position and a confidence score. Use `report.to_dict()` for the complete data.
+  [Report fields](docs/interpreter.md#report-fields).
+- Inspect `tray.open` at departure to see the possible identities for each unresolved stone. Tray facts carry reason
+  codes. Tray stones expose their arrival and departure positions, touch history and the appearance matches used by
+  the report. [Tray tracking](docs/interpreter.md#trays-and-tray-stones).
+- Read the unit’s `world.speckle` comparisons (build `claude-20261123-speckle3` onwards). `TraySpeckle` groups
+  matches by tray. `StoneSpeckle` gives a stone’s best and second-best scores, match quality and pairing. The
+  interpreter keeps the latest 1,024 comparisons.
+  [Speckle fields and examples](docs/interpreter.md#the-units-speckle-check).
+- Version 8 of the tray rules uses the departure comparison to confirm or recover stone IDs. It records
+  `speckle_same`, `speckle_moved` or `speckle_found` as the reason. The evidence can be found, absent or undecided.
+  Each change’s confidence also appears in the printed report. [Confidence scores](docs/interpreter.md#confidence).
 - Trays and tray stones (SDK-DESIGN.md 4.6): stone ids of the SDK's own, one per stone and never reused (a second stone
   first seen on a tray in the same tenth of a second under one world id gets `-2` at the end, a third `-3`), kept over
   each tray from its arrival to its leaving whatever ids the engine's tracker renames or reuses; tray facts that are
   certain or unclear, never revised (`update.tray_facts`, `interpreter.tray_facts()`, `Replay.tray_facts()`), every tray
   with its arrival and leaving points to jump between (`interpreter.trays()`, `Replay.trays()`, `Tray.window()`),
   `state.tray`, `Event.tray_stone`, `InterpreterCore.end()`, and the `trays` counts of the summary.
-- Presence questions (SDK-DESIGN.md 4.6.1): a tray stone without a look chain that is not seen at two calm moments while
-  nothing could have changed it is held in question (`TrayStone.question`, cause `unseen`; not sure, no fact) and is
-  sure again once the world sees it again on its place with no hand at work, no held stone, no stone a hand took away
-  and no push on the tray meanwhile, no other stone of its size within 0.12 of its place, and no look of its world stone
-  that matches another stone in question or lost; otherwise its fact `unsure` comes where the question ends, `opened` at
-  its doubt. A question settled on a calm moment that does not show the stone (at once at its doubt, or by a sight
-  before that calm moment) holds only if the next calm moment that shows it, or the tray's last frame when the tray
-  leaves first and that frame shows it, finds nothing at work since (else a plain `unsure` fact there). A stone with a
-  look chain is never held in question: its doubt is a question only its looks settle. Frames the tray rules can not
-  read (a frame without a world, a jump in `g`, a `gap` or `reset` of the stream, any revision, the moving frames of a
-  tray that goes on) end the questions open then; `InterpreterCore.gap()` tells the core about a `gap` or `reset` event.
-  A settled stone gets no `unsure` fact, one whose question ends gets its fact there, and the leaving counts its last
-  snapshot's own frame only once for a stone nothing could have changed since its last sight (a stone not detected only
-  there gets no `unsure` fact).
-- Certain removals and a visit's continuation (SDK-DESIGN.md 4.6.1): a lost tray stone is removed for certain only when
-  a hand touched its world id (a `lift`, `hinge`, `carry`, `place`, `drop` or `gone`, a `push` with a `side`, or a
-  `delete` with why `hand` or `carried-away`) from the last calm moment before its loss, or from 3.0 s before it was
-  last seen if that is earlier, up to its loss; else it stays lost, and a rename or the leaving pairs it, or the leaving
-  reports it removed, unclear, with the open cause `no_hand`. A visit continues the open tray only when nine tenths of
-  its first frame's stones were seen on it, so a new board that carries over many of the last board's world ids is a
-  tray of its own. On the four published recordings: 52 certain removals, 49 of them right by the maintainers' camera
-  check, and 628 trays with 532 reports.
-- The leaving's evidence (SDK-DESIGN.md 4.6.1, Leaving): as a tray leaves, a lost tray stone is linked to a new world
-  stone near it only with evidence that it is the same stone: their looks agree, or the world stone was first seen at or
-  after the lost stone was last seen (less 3.0 s), no hand worked within 0.40 of either place since, and their looks do
-  not disagree. Without it the lost stone is removed and the world stone added, both unclear (each the other's candidate
-  in the open account), so a stone's id never passes to a stone that may be another: by the maintainers' camera check,
-  every stone that left dry1's and dry2's trays is reported removed. An unidentified stone that the leaving point's
-  world shows detected and not held is present as the tray leaves, at its place there (positive evidence at departure).
-  So is one that world keeps there (lists it, not detected), not held, with less than 0.30 of its box under one other
-  unheld stone's box there: by the maintainers' camera check, 32 of the 63 stones this adds on the four published
-  recordings were there (dry1's tray 2 accounts for the 44 stones the video shows), and 25 are boxes on jul30's bare
-  boards that are not there.
+- If a stone disappears at two calm moments, the SDK can hold its identity open. It restores the identity if the
+  stone returns in place and the intervening frames rule out a swap. Hand activity, competing matches, missing
+  frames or a stream reset can end the question. Stones with an appearance history follow their own matching rules.
+  [Presence and identity rules](spec/SDK-DESIGN.md#461-the-tray-rules).
+- A certain removal requires evidence of recent hand contact. Otherwise a lost stone stays available for matching or
+  becomes an unclear removal at departure. A visit continues the same tray only if at least 90% of its initial
+  stones were already seen on it. Across the four recordings, the SDK found 628 trays and produced 532 reports. A
+  video check confirmed 49 of 52 certain removals.
+- At departure, the SDK uses appearance, timing and nearby hand activity to decide whether a new tracker ID belongs
+  to a lost stone. If the evidence is ambiguous, it records an unclear removal and addition and lists each as a
+  candidate for the other. The departure rules also allow some previously tracked stones that have no bounding box
+  at departure. In a video check, 32 of the 63 extra stones counted this way were present. Another 25 were false
+  detections on empty jul30 boards. [Departure rules](spec/SDK-DESIGN.md#461-the-tray-rules).
+
+#### Client, replay and streams
+
+- `FactoryClient`: the async client (httpx), with retries and full-jitter backoff, timeouts, a bearer token, extra
+  headers, an injectable transport, and injectable time and randomness.
 - High level: `Interpreter` (typed events, moves, push bursts, hands, stones, summary, sentences, `wait_for`),
   `InterpreterCore` (the rules, without I/O), `Replay` (files and URLs, sync and async, real-time pacing), the shared
   session's controls with `dry_run`, its clock, and the sources with the live cameras (`factory.cameras()`,
@@ -82,16 +63,6 @@ plant cameras, the stones' looks and the speckle answers).
   stone tuples and coordinates. `open_video_media` reads media as a stream (`MediaStream`), for a large file;
   `get_video_media` refuses a whole-file reply with neither a length nor byte ranges, which would never end, with
   `not_seekable`.
-- `testing`: `FakeFactory`, a fake server from recordings and recorded replies with fault injection and a live
-  camera emulated (`LIVE_CAMERA`: connecting, warming up and going live on the fake's time, a picture for each of the
-  newest frames, no media), `FakeTime` (starting where the recording plays) and `use_fake`.
-- The fake unit's camera follows build live3: a play connects again and warms up on the camera's next frames (after a
-  break, `g` jumping by 5), only the newest 64 pictures are kept (`KEEP_PICTURES`), frames and raw packets are numbered
-  as the unit numbers them, controls and errors come in the unit's order and words (a seek naming a recording is
-  applied; a select of a camera with any time, null too, is refused), every change, each phase too, is a `clock`
-  event, a stream on a paused camera waits for a control, a stream or a long-poll waiting for a phase moves the fake's
-  clock on to it, and a fake with only its camera (no recording) answers the frames, the world and the long-poll from
-  it, with nothing retained; `fake.advance(seconds)` and `fake.live_phase()`.
 - Streams count `limit` and `max_s` themselves and close the connection when either is reached (the 20.20 unit holds a
   finished stream about 10 s); `clock_on_connect=True` reads the shared state after every (re)connect, which the
   interpreter uses for wall times (the unit sends no `clock` event on connect).
@@ -115,6 +86,19 @@ plant cameras, the stones' looks and the speckle answers).
   it); a header that does not decode is skipped instead of failing the replay.
 - Logging to the `pdigger_factory_sdk` logger (reconnects, backoff waits, late layers, retries), and
   `factory.interpreter(max_reconnects=...)`.
-- Examples, docs, four tutorials (`docs/tutorials/`: high level, low level, live cameras, Python; every step a
-  tested program), unit tests in Docker at 100 % line and branch coverage, and golden tests that compare every fixture
-  recording with the reference outputs byte for byte.
+
+#### Testing and documentation
+
+- `testing`: `FakeFactory`, a fake server from recordings and recorded replies with fault injection and a live
+  camera emulated (`LIVE_CAMERA`: connecting, warming up and going live on the fake's time, a picture for each of the
+  newest frames, no media), `FakeTime` (starting where the recording plays) and `use_fake`.
+- The fake unit's camera follows build live3: a play connects again and warms up on the camera's next frames (after a
+  break, `g` jumping by 5), only the newest 64 pictures are kept (`KEEP_PICTURES`), frames and raw packets are numbered
+  as the unit numbers them, controls and errors come in the unit's order and words (a seek naming a recording is
+  applied; a select of a camera with any time, null too, is refused), every change, each phase too, is a `clock`
+  event, a stream on a paused camera waits for a control, a stream or a long-poll waiting for a phase moves the fake's
+  clock on to it, and a fake with only its camera (no recording) answers the frames, the world and the long-poll from
+  it, with nothing retained; `fake.advance(seconds)` and `fake.live_phase()`.
+- Five [runnable tutorials](docs/tutorials/README.md) cover tray reports, the interpreter, frame data, live cameras
+  and Python conventions. The first tutorial explains a real tray report and follows the uncertain changes back to
+  their evidence.

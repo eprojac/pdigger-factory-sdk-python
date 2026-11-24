@@ -1,7 +1,7 @@
 # Testing your code
 
-`pdigger_factory_sdk.testing` lets you unit-test code that uses the SDK with no unit, no network and no real clock.
-The SDK's own tests use it for everything.
+`testing.FakeFactory` serves recorded responses through an httpx transport. Use it in pytest to exercise the same
+client code you run on a unit. See [the SDK test suite](../TESTING.md) for coverage and integration checks.
 
 ## `FakeFactory`
 

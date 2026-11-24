@@ -1,9 +1,9 @@
-# Low level: one call per operation
+# Read a frame through the HTTP API
 
-Under the interpreter, `factory.api` has one async method for each of the unit's 32 operations, each returning a
-typed model of its reply (fields the SDK does not know are kept in `raw_json`), and `pdigger_factory_sdk.codec`
-decodes what the replies pack: maps, bitsets, depth, joints and stone tuples. Use this level to build what the
-interpreter does not: your own drawing, a dashboard of the unit, a bridge to your MES or ERP, a check of the model.
+<a id="low-level-one-call-per-operation"></a>
+
+Use `factory.api` to check the unit’s status, request a frame and draw its stones and hands. Each method maps to one
+HTTP operation. The codec unpacks data such as depth images, joint positions and stone shapes.
 
 The code is [examples/tutorial_low_level.py](../../examples/tutorial_low_level.py), one function per step; run them
 all with `python examples/tutorial_low_level.py`, or some by name (`... tutorial_low_level.py hands image`). Every

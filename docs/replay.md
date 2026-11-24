@@ -1,8 +1,7 @@
 # Replay
 
-`Replay` runs the interpreter over a recording instead of a unit: the same events, activities, text and summary,
-offline. Use it to try the SDK, to develop against real data, and to check your own processing against the published
-summaries.
+Use `Replay.open` to read a local file or a recording URL. You can repeat a shift, inspect a stone’s history and
+compare the summary against the published result. A local replay runs offline.
 
 ```python
 import sys
@@ -74,8 +73,9 @@ The clock lines of a recording give the events and activities their `wall` times
 
 ## Trays
 
-`trays()` reads the whole recording and lists its trays, each with the point where it had arrived and settled and the
-point just before it moved out, its tray stones (the SDK's own ids, never reused) and its facts:
+`trays()` reads the full recording and returns its trays in order. Each tray includes its stones, facts and the
+points when it settled and left. Use these points to seek to the same tray in a player.
+[Tray identity and events](interpreter.md#trays-and-tray-stones).
 
 ```python
 trays = await Replay.open(source).atrays()
