@@ -13,7 +13,7 @@ license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "eprojac" }]
 keywords = ["pdigger", "factory", "computer-vision", "interpreter", "asyncio", "sse", "sdk"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Framework :: AsyncIO",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
@@ -52,6 +52,7 @@ include = [
     "/src",
     "/tests",
     "/examples",
+    "/notebooks",
     "/docs",
     "/fixtures",
     "/spec",

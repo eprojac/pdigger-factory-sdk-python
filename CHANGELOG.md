@@ -3,7 +3,7 @@
 All notable changes to this SDK. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 version follows [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] - Unreleased
+## [1.0.0] - 2026-11-25
 
 Initial SDK for API v2.2. The reference unit ran build `claude-20261123-speckle7` with four recordings and six plant
 cameras. It supplies stone appearance data and surface-pattern comparisons.
@@ -88,6 +88,9 @@ cameras. It supplies stone appearance data and surface-pattern comparisons.
   `factory.interpreter(max_reconnects=...)`.
 
 #### Testing and documentation
+
+- Compare the same tray at arrival and departure in the [3D notebook](notebooks). The saved example opens with the
+  report already drawn. Drag either view to rotate both, or hover over a stone to see its details.
 
 - `testing`: `FakeFactory`, a fake server from recordings and recorded replies with fault injection and a live
   camera emulated (`LIVE_CAMERA`: connecting, warming up and going live on the fake's time, a picture for each of the

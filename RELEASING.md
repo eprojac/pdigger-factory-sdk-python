@@ -6,7 +6,7 @@ changelog notes to the GitHub release.
 
 1. Set `__version__` in `src/pdigger_factory_sdk/_version.py`. The package metadata and user agent read that value.
 2. Move the unreleased changelog notes under the version being released and merge to `main`.
-3. Tag the release commit and push the tag. For version 0.1.0, use `git tag v0.1.0` and `git push origin v0.1.0`.
+3. Tag the release commit and push the tag. For version 1.0.0, use `git tag v1.0.0` and `git push origin v1.0.0`.
 
 ## What the repository needs
 
@@ -16,3 +16,9 @@ changelog notes to the GitHub release.
 - Create the `pypi` GitHub environment. Required reviewers can review each publish.
 - Protect `main` with the CI checks required for release. GitHub supplies the token for the release, and PyPI uses
   trusted publishing.
+
+## Publish on GitHub only
+
+Before pushing the tag, set the repository Actions variable `SDK_GITHUB_ONLY_TAG` to the full tag name, including
+the leading `v`. The workflow builds the wheel and source archive and saves them in the `dist` artifact.
+Download that artifact and attach both files when you publish the GitHub release.

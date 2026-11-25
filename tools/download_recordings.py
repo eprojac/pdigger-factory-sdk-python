@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 DATA = "https://factory.pdigger.com/developers/data/"
-USER_AGENT = "pdigger-factory-sdk-python-tools/0.1.0"
+USER_AGENT = "pdigger-factory-sdk-python-tools/1.0.0"
 
 
 def _get(url: str) -> bytes:

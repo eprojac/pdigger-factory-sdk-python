@@ -44,6 +44,7 @@ jobs:
           path: dist/
 
   pypi:
+    if: vars.SDK_GITHUB_ONLY_TAG != github.ref_name
     name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
