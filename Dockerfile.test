@@ -1,8 +1,14 @@
-# The unit tests, as `make test` and CI run them, with no network:
+# The unit tests, as `make test` and CI run them, with no network, on two bases: the newest Python (the default) and
+# Python 3.12 (CI's matrix tests 3.10, 3.11, 3.13 and 3.14 outside Docker):
 #   docker build -t pdigger-factory-sdk-python-test -f Dockerfile.test .
+#   docker build --build-arg PYTHON=3.12 -t pdigger-factory-sdk-python-test:py3.12 -f Dockerfile.test .
 #   docker run --rm --network none pdigger-factory-sdk-python-test
-# The base is Python 3.12.16 (python:3.12-slim), pinned by its digest; Dependabot proposes updates.
-FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+# The bases are Python 3.15.2 (python:3.15-slim) and 3.12.16 (python:3.12-slim), each pinned by its digest.
+# Dependabot keeps the digests current; a new minor Python is chosen by hand (.github/dependabot.yml).
+ARG PYTHON=3.15
+FROM python:3.15-slim@sha256:63bb298d2b7b88f176f51b5189f54ce6535c997682ea70885d2132f5d473a8a5 AS python-3.15
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b AS python-3.12
+FROM python-${PYTHON}
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

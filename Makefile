@@ -1,5 +1,6 @@
-# make test   the unit tests in Docker, with no network, as CI runs them (lint, types, tests at 100 % coverage, docs);
-#             make test DOCKER_BUILD_FLAGS=--no-cache rebuilds the image from nothing
+# make test   the unit tests in Docker, with no network, as CI runs them (lint, types, tests at 100 % coverage, docs),
+#             on both bases of Dockerfile.test, Python 3.15 and then 3.12; make test-3.15 or make test-3.12 runs one;
+#             make test DOCKER_BUILD_FLAGS=--no-cache rebuilds the images from nothing
 # make check  the same checks in your own environment (pip install -r requirements-test.txt -e . first)
 # make integration  the opt-in tests in the same image, with the network: the read-only checks of the unit at
 #             PDIGGER_FACTORY_URL and/or the complete recordings in the folder PDIGGER_FACTORY_RECORDINGS
@@ -8,17 +9,29 @@
 # make clean  remove caches, coverage data and build output
 
 IMAGE := pdigger-factory-sdk-python-test
+# Dockerfile.test's two bases: the newest Python (the image $(IMAGE)) and the oldest one the gate keeps ($(IMAGE):py3.12)
+PYTHON_NEW := 3.15
+PYTHON_OLD := 3.12
 DOCKER_BUILD_FLAGS ?=
 DOCKER_RUN_FLAGS ?=
 PYTHON ?= python3
 
-.PHONY: test image integration integration-env check docs picture models build clean
+.PHONY: test test-$(PYTHON_NEW) test-$(PYTHON_OLD) image image-$(PYTHON_OLD) integration integration-env check docs \
+	picture models build clean
 
-test: image
+test: test-$(PYTHON_NEW) test-$(PYTHON_OLD)
+
+test-$(PYTHON_NEW): image
 	docker run --rm --network none $(DOCKER_RUN_FLAGS) $(IMAGE)
+
+test-$(PYTHON_OLD): image-$(PYTHON_OLD)
+	docker run --rm --network none $(DOCKER_RUN_FLAGS) $(IMAGE):py$(PYTHON_OLD)
 
 image:
 	docker build $(DOCKER_BUILD_FLAGS) -t $(IMAGE) -f Dockerfile.test .
+
+image-$(PYTHON_OLD):
+	docker build $(DOCKER_BUILD_FLAGS) --build-arg PYTHON=$(PYTHON_OLD) -t $(IMAGE):py$(PYTHON_OLD) -f Dockerfile.test .
 
 # The unit's address must be one the container can reach (an IP address; .local names do not resolve in Docker).
 # PDIGGER_FACTORY_TIMEOUT (seconds, default 60) bounds the unit checks.

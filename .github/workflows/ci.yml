@@ -18,8 +18,8 @@ jobs:
     name: Lint and types
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -38,13 +38,19 @@ jobs:
         run: python tools/gen_models.py --check
 
   docker:
-    name: Unit tests in Docker (no network, 100 % coverage)
+    name: Unit tests in Docker on Python ${{ matrix.python }} (no network, 100 % coverage)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Dockerfile.test's two bases: the newest Python and 3.12
+        python: ["3.15", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - name: make test
-        run: make test
+      - uses: actions/checkout@v7
+      - name: make test-${{ matrix.python }}
+        run: make test-${{ matrix.python }}
       - name: The runtime image builds (its base is updated by Dependabot)
+        if: matrix.python == '3.15'
         run: docker build -t pdigger-factory-sdk-python .
 
   python:
@@ -55,8 +61,8 @@ jobs:
       matrix:
         python: ["3.10", "3.11", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -72,8 +78,8 @@ jobs:
     name: API reference
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -84,7 +90,7 @@ jobs:
           python -m pip install --no-deps --no-build-isolation -e .
       - name: pdoc
         run: make docs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: api-reference
           path: site/
@@ -93,8 +99,8 @@ jobs:
     name: Package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Build the sdist and the wheel
@@ -106,7 +112,7 @@ jobs:
           python -m venv /tmp/try
           /tmp/try/bin/pip install dist/*.whl
           /tmp/try/bin/python -c "import pdigger_factory_sdk as sdk; print(sdk.USER_AGENT)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/

@@ -6,8 +6,9 @@
 make test
 ```
 
-`make test` builds a pinned Python 3.12 image with the versions in `requirements-test.txt`. It starts the container
-with networking disabled and runs `tools/test.sh`. The checks run in this order.
+`make test` builds two pinned images, Python 3.15 and Python 3.12, with the versions in `requirements-test.txt`, and
+runs the checks in each, one after the other (`make test-3.15` or `make test-3.12` runs one; CI runs both). Each
+container starts with networking disabled and runs `tools/test.sh`. The checks run in this order.
 
 1. `ruff format --check` and `ruff check`;
 2. `mypy --strict` over `src`, `tests`, `examples` and `tools`;
