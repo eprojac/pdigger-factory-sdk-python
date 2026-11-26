@@ -22,7 +22,7 @@ python -m pip install .
 ```
 
 If you only need the library, install it directly with
-`python -m pip install "pdigger-factory-sdk @ git+https://github.com/eprojac/pdigger-factory-sdk-python@v1.0.0"`. The
+`python -m pip install "pdigger-factory-sdk @ git+https://github.com/eprojac/pdigger-factory-sdk-python@v1.0.1"`. The
 import name is `pdigger_factory_sdk`.
 
 <a id="simple-mode-one-report-per-tray"></a>

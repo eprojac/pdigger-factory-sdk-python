@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import math
 import os
 import time
 import zlib
@@ -603,7 +604,7 @@ class Replay:
                         if got.session != session:
                             session, anchor_clock, anchor_t = got.session, self._monotonic(), got.t
                         delay = anchor_clock + (got.t - anchor_t) / speed - self._monotonic()
-                        if delay > 0:
+                        if delay > 0 and math.isfinite(delay):  # a frame at an infinite time comes at once
                             await self._sleep(delay)
                     yield got
                     await asyncio.sleep(0)

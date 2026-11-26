@@ -57,7 +57,9 @@ TRACK_POINTS = 512
 TRACK_STONES = 4096
 """Stones whose tracks the core keeps (the most recently moved ones)."""
 GRID_SECONDS = 0.2
-"""Media seconds of one grid frame (5 per second)."""
+"""Media seconds of one grid frame of a recorded video (5 per second)."""
+GRID_MS = 200
+"""Milliseconds of one grid frame of a recorded video: the step of a session's first frame (SDK-DESIGN.md 4.5)."""
 TRAYS_KEPT = 256
 """Trays that have left that `InterpreterCore.trays()` keeps (the newest; `Replay.trays()` keeps every one)."""
 SPECKLE_KEPT = 1024
@@ -348,6 +350,25 @@ def _event_counts() -> dict[str, int]:
     return dict.fromkeys((*EVENT_TYPES, "other"), 0)
 
 
+def _hand_step(prev: tuple[int, float, int] | None, g: int, t: float) -> int:
+    """The milliseconds a new frame adds to its hands' states (SDK-DESIGN.md 4.5): the media time since the session's
+    previous new frame `(g_prev, t_prev, step_prev)` when that frame is the grid step before it (`g == g_prev + 1`), in
+    whole milliseconds, half up, when that is at least 1 ms and below 2^31 ms; otherwise the session's previous step (a
+    frame after a gap, a `t` not after the previous one or not a finite number), and 200 (one grid frame of a recorded
+    video) for a session's first frame."""
+    if prev is None:
+        return GRID_MS
+    pg, pt, step = prev
+    if g == pg + 1:
+        try:
+            x = (t - pt) * 1000 + 0.5
+        except OverflowError:  # a time no double holds: json reads a long whole number as an int (SDK-DESIGN.md 2.3)
+            return step
+        if 1 <= x < 2**31:
+            return math.floor(x)
+    return step
+
+
 def _hand_seconds() -> dict[str, dict[str, float]]:
     return {side: dict.fromkeys(HAND_STATES, 0.0) for side in ("left", "right")}
 
@@ -355,7 +376,9 @@ def _hand_seconds() -> dict[str, dict[str, float]]:
 @dataclass(slots=True, kw_only=True)
 class Summary:
     """Counts of a replay or of a stream so far (section 4.4); `to_dict()` is the golden JSON form, `describe()` its
-    text. Times are seconds, rounded to 3 decimals; hand times are 0.2 s per frame with a world in that state."""
+    text. Times are seconds, rounded to 3 decimals; a hand time adds up each frame with a world in that state by its
+    step (SDK-DESIGN.md 4.5: the media time since the session's previous frame when that frame is the grid step before
+    it, else the previous step; 0.2 s on a recorded video, about 0.3 s on a plant camera)."""
 
     frames: int = 0
     frames_with_world: int = 0
@@ -511,7 +534,8 @@ class InterpreterCore:
         self._dur_n = 0
         self._dist_sum = 0.0
         self._dist_n = 0
-        self._hand_frames = {side: dict.fromkeys(HAND_STATES, 0) for side in ("left", "right")}
+        self._hand_ms = {side: dict.fromkeys(HAND_STATES, 0) for side in ("left", "right")}
+        self._step_prev: tuple[int, float, int] | None = None  # (g, t, step) of the session's previous new frame
         self._tracks: dict[int, list[TrackPoint]] = {}  # the most recently moved stone last
         self._trays: deque[Tray] = deque(maxlen=trays_kept)  # trays that have left, oldest first
         self._speckle: deque[TraySpeckle] = deque(maxlen=SPECKLE_KEPT)  # the unit's speckle answers, oldest first
@@ -556,6 +580,7 @@ class InterpreterCore:
             self._s.sessions += 1
             self._session_first_t = t
             self._prev_g = None
+            self._step_prev = None
             before = len(acts)
         elif self._prev_g is not None and g <= self._prev_g:
             rev = w.rev if w is not None else 0
@@ -571,6 +596,8 @@ class InterpreterCore:
             s.gaps += 1
             self._ledger.skipped()
         self._prev_g = g
+        step = _hand_step(self._step_prev, g, t)
+        self._step_prev = (g, t, step)
         self._session_last_t = t
         self._g, self._t = g, t
         if frame.cards is not None:
@@ -607,7 +634,7 @@ class InterpreterCore:
         s.stones.confirmed_last = w.stats.confirmed
         for side, hand in (("left", w.hands.left), ("right", w.hands.right)):
             if hand is not None and hand.state in HAND_STATES:
-                self._hand_frames[side][hand.state] += 1
+                self._hand_ms[side][hand.state] += step
         here = TrayPoint(g=ref.g, t=ref.t, wall=ref.wall)
         facts += self._ledger.feed(w, here)
         answers: list[TraySpeckle] = []
@@ -691,10 +718,7 @@ class InterpreterCore:
             push_bursts=replace(s.push_bursts),
             stones=replace(s.stones),
             trays=replace(s.trays),
-            hands={
-                side: {k: round3(GRID_SECONDS * n) for k, n in states.items()}
-                for side, states in self._hand_frames.items()
-            },
+            hands={side: {k: round3(ms / 1000) for k, ms in states.items()} for side, states in self._hand_ms.items()},
             media_seconds=round3(media),
             first_t=None if s.first_t is None else round3(s.first_t),
             last_t=None if s.last_t is None else round3(s.last_t),

@@ -351,6 +351,17 @@ async def test_realtime_pacing(tmp_path: Path) -> None:
         replay.aevents(speed=0)
 
 
+async def test_realtime_pacing_never_waits_for_an_infinite_time(tmp_path: Path) -> None:
+    # 1e400 reads as infinity (SDK-DESIGN.md 2.3): that frame comes at once, the next one when its time comes
+    lines = [json.dumps(x) for x in (HEADER, frame(0), frame(5, t=123.25), frame(10))]
+    path = tmp_path / "far.ndjson"
+    path.write_text("\n".join(lines).replace("123.25", "1e400") + "\n")
+    t = FakeTime()
+    replay = Replay(path, sleep=t.sleep, monotonic=t.monotonic)
+    assert [f.g async for f in replay.aframes(pace="realtime")] == [0, 5, 10]
+    assert t.slept == [pytest.approx(2.0)]
+
+
 async def test_defaults_from_use_fake() -> None:
     fake = FakeFactory(files={"/r.ndjson.gz": recording(NAME).read_bytes()})
     with use_fake(fake):

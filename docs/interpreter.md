@@ -343,8 +343,8 @@ moves: 9 (placed 5, dropped 2, carried away 2, removed 0, interrupted 0, partial
 push bursts: 51 (left 25, right 16, both 10), pushes 456
 events: new 276, confirm 119, freeze 99, push 533, lift 9, hinge 4, carry 6, place 5, drop 2, gone 2, delete 76, split 3, other 0
 trays: 2 (arrived 2), stones at arrival 83, added 0 (+14 unclear), removed 6 (+9 unclear), not sure 37
-left hand: free 0:54.0, touch 0:52.4, grasp 0:17.2, hinge 0:00.4, carry 0:02.4
-right hand: free 1:08.0, touch 0:09.4, grasp 0:38.8, hinge 0:00.6, carry 0:09.6
+left hand: free 0:53.7, touch 0:52.1, grasp 0:17.1, hinge 0:00.4, carry 0:02.4
+right hand: free 1:07.7, touch 0:09.4, grasp 0:38.6, hinge 0:00.6, carry 0:09.6
 ```
 
 - `frames` counts frames fed (a revision counts in `revisions` instead); `missing_world` counts frames whose world was
@@ -354,7 +354,10 @@ right hand: free 1:08.0, touch 0:09.4, grasp 0:38.8, hinge 0:00.6, carry 0:09.6
 - `stones`: the number in the last world, the most in any frame, and the last `stats.confirmed`.
 - `trays`: trays opened and arrived, tray stones at the arrivals, certain and unclear additions and removals, and tray
   stones that stopped being sure.
-- The hand times are 0.2 s for each frame with a world in which the hand was in that state.
+- The hand times add up each frame with a world in which the hand was in that state by its step: the media time
+  since the session's previous frame when that frame is the grid step before it, and after a gap the previous step
+  (0.2 s on a recorded video, 0.199 s on dry1 and dry2, about 0.3 s on a plant camera, whose worker releases about
+  three frames a second; SDK-DESIGN.md 4.5).
 - `mean` is the mean duration of the moves that are not partial or interrupted, and the mean distance of the moves
   that have one.
 

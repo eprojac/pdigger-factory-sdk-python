@@ -1446,11 +1446,19 @@ class TrayLedger:
         out.append(f)
 
     def _begin(self, out: list[TrayFact]) -> None:
-        ids = {s.id for s in self._stop[0][0].stones if s.mode not in _HELD}
+        unheld = {s.id for s in self._stop[0][0].stones if s.mode not in _HELD}
+        ids = {s.id for s in self._stop[0][0].stones if s.mode not in _HELD and s.detected}
         tr = self._tray
-        # a visit continues the open tray only when nearly all (nine tenths) of its first frame's stones were seen on
-        # the tray: a new board under the camera may carry many of the last board's world ids (4.6.1)
-        if not (tr is not None and ids and 10 * len(ids & tr.ids) >= 9 * len(ids)):
+        # a visit continues the open tray only on the camera's word (4.6.1): at least one of its first frame's detected
+        # stones was seen on the tray, and nine tenths of those detected stones were, or nine tenths of all its stones
+        # that no hand holds (a jolt can leave most of a board's stones only remembered and rename one of the few the
+        # camera sees). A new board under the camera may carry many of the last board's world ids, and a board that
+        # drove off may leave its stones remembered (not detected) where it stood.
+        if not (
+            tr is not None
+            and len(ids & tr.ids) > 0
+            and (10 * len(ids & tr.ids) >= 9 * len(ids) or 10 * len(unheld & tr.ids) >= 9 * len(unheld))
+        ):
             self._close(out)
             self._n += 1
             self._c.total += 1

@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import urllib.parse
 import urllib.request
@@ -22,7 +23,10 @@ from pathlib import Path
 from typing import Any
 
 DATA = "https://factory.pdigger.com/developers/data/"
-USER_AGENT = "pdigger-factory-sdk-python-tools/1.0.0"
+# the package's version, read from its source so the tool stays standard library only
+_SOURCE = Path(__file__).resolve().parents[1] / "src" / "pdigger_factory_sdk" / "_version.py"
+_VERSION = re.search(r'__version__ = "([^"]+)"', _SOURCE.read_text())
+USER_AGENT = f"pdigger-factory-sdk-python-tools/{_VERSION.group(1) if _VERSION else 'unknown'}"
 
 
 def _get(url: str) -> bytes:

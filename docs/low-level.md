@@ -88,8 +88,10 @@ for large files: an async context manager that gives a `MediaStream`, with the r
 the body in chunks as they arrive. Leaving the block, `aclose()` or cancelling the task closes the connection.
 
 A live camera has no media (`404 not_found`): its pictures come with its frames. `get_frame_picture(g)` is the JPEG a
-live frame was interpreted from (640 x 360 on the plant rigs; the layers' native pixels are that picture stretched to
-`native_wh`), with the frame's `g` (`"latest"` gives the newest); the unit keeps the newest 64, and a recording has
+live frame was interpreted from (640 x 360 on the plant rigs; the layers' native pixels are that picture scaled to fit
+`native_wh` and centred, the rest black: a picture of another shape is letterboxed, from worker
+`claude-20261125-dspad1` on; earlier workers stretched it), with the frame's
+`g` (`"latest"` gives the newest); the unit keeps the newest 64, and a recording has
 none (`not_found`):
 
 ```python

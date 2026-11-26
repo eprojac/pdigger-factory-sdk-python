@@ -33,7 +33,7 @@ def clocked_core(**options: Any) -> InterpreterCore:
 
 def test_a_tray_as_values() -> None:
     trays = Replay.open(recording(SYNTH)).trays()
-    assert [t.n for t in trays] == [1, 2, 3, 4, 5, 6, 7]
+    assert [t.n for t in trays] == [1, 2, 3, 4, 5, 6, 7, 8]
     first = trays[0]
     assert first.window() == (0.8, 5.2)
     assert trays[3].window() is None  # a stop that never settled
@@ -211,7 +211,7 @@ def test_events_name_their_tray_stone_and_the_state_its_tray() -> None:
     assert seen["confirm 2"] == "20261118T000000.8Z-1-2"  # frame 13, when 2 still stood for its tray stone
     assert seen["confirm 7"] is None  # frame 26, still the newest, which set 7 down: no tray stone before it
     assert seen["confirm 17"] is None  # frame 58, whose rename linked 17
-    assert trays_seen == {1, 2, 3, 4, 5, 6, 7}
+    assert trays_seen == {1, 2, 3, 4, 5, 6, 7, 8}
     assert core.state.tray is None  # after the end
     new = next(e for e in Replay.open(recording(SYNTH)).events() if e.type == "new")
     assert new.to_dict()["tray_stone"] is None
@@ -226,13 +226,13 @@ def test_the_core_keeps_the_newest_trays() -> None:
         if frame.g == 80:  # tray 3 is on
             assert [t.n for t in core.trays()] == [1, 2, 3]
     core.end()
-    assert [t.n for t in core.trays()] == [6, 7]
+    assert [t.n for t in core.trays()] == [7, 8]
     unbounded = InterpreterCore(trays_kept=None)
     for frame in synthetic_frames():
         unbounded.feed(frame)
-    assert [t.n for t in unbounded.trays()] == [1, 2, 3, 4, 5, 6, 7]  # tray 7 is still on
+    assert [t.n for t in unbounded.trays()] == [1, 2, 3, 4, 5, 6, 7, 8]  # tray 8 is still on
     assert unbounded.state.tray is not None
-    assert unbounded.state.tray.n == 7
+    assert unbounded.state.tray.n == 8
 
 
 def test_finish_leaves_the_tray_facts_in_trays() -> None:
@@ -250,7 +250,7 @@ async def test_the_interpreter_streams_tray_facts() -> None:
         async with interpreter.tray_facts() as facts:
             got = [fact async for fact in facts]
         assert text_of(got) == golden(SYNTH, "trays.txt")
-        assert [t.n for t in interpreter.trays()] == [1, 2, 3, 4, 5, 6, 7]
+        assert [t.n for t in interpreter.trays()] == [1, 2, 3, 4, 5, 6, 7, 8]
         assert interpreter.end().tray_facts == []  # the stream's end made the last tray leave
 
 

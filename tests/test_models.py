@@ -177,6 +177,17 @@ def test_sources() -> None:
     assert models.VideoEntry is models.Source
 
 
+def test_a_hand_away_from_the_board() -> None:
+    # `away` is present (true) only on a hand sent as free because it is in contact away from the board
+    hand = models.HandState.from_json
+    assert hand({"state": "free", "stone": None}).away is None
+    assert hand({"state": "free", "stone": None, "away": True}).away is True
+    assert hand({"state": "free", "stone": None, "away": False}).away is False
+    with pytest.raises(FactoryError) as e:
+        hand({"state": "free", "away": "yes"})
+    assert e.value.code == "decode"
+
+
 def test_generated_models_are_current() -> None:
     result = subprocess.run(
         [sys.executable, str(ROOT / "tools" / "gen_models.py"), "--check"], capture_output=True, text=True, check=False

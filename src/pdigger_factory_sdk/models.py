@@ -2022,9 +2022,17 @@ class HandState:
     """The `HandState` schema."""
 
     state: str
+    """`touch` and `grasp` are the temporal model's contact readings. With fixer thin-v1 (dry videos and cameras), a
+    hand in contact that holds no stone and whose wrist is off the board (the regions' tray map) is sent as
+    `free`, with `away` true.
+    """
     stone: int | None = None
     rayK: float | None = None
     untrusted: bool | None = None
+    away: bool | None = None
+    """Present (true) only on a hand sent as `free` because it is in contact away from the board: a worker's hand
+    busy beside the board, or a false hand on machinery. It does not hold a stone and does not work on the tray.
+    """
     raw_json: dict[str, Any] = _field(default_factory=dict, repr=False, compare=False)
     """The JSON object this was parsed from, unknown fields included."""
 
@@ -2037,6 +2045,7 @@ class HandState:
             stone=p.opt("stone", as_int),
             rayK=p.opt("rayK", as_num),
             untrusted=p.opt("untrusted", as_bool),
+            away=p.opt("away", as_bool),
             raw_json=p.o,
         )
 

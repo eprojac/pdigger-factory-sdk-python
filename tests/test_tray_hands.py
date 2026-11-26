@@ -1,5 +1,6 @@
 """Version 4 of the tray rules (SDK-DESIGN.md 4.6.1): a certain removal needs a hand on the stone, and a visit continues
-the open tray only when nine tenths of its first frame's stones were seen on it."""
+the open tray only on the camera's word: of the stones no hand holds at its first frame, the tray saw one the world
+detects, and nine tenths of the detected ones or of them all."""
 
 from __future__ import annotations
 
@@ -151,6 +152,89 @@ def _board(known: int) -> list[Tray]:
 
 def test_a_visit_with_nine_tenths_of_its_stones_seen_goes_on_as_the_same_tray() -> None:
     assert [t.n for t in _board(9)] == [1]
+
+
+def _drove_off(detected: bool) -> list[Tray]:
+    """Ten stones arrive; the conveyor moves; the next stop's first frame shows seven of them where they stood, detected
+    or only remembered, and the world loses them one after another."""
+    sc = _Scene()
+    sc.on = {i: synth.stone(i, -0.9 + 0.2 * i) for i in range(10)}
+    sc.step(12)
+    sc.step(3, motion="moving")
+    for i in range(3):
+        del sc.on[i]
+    sc.on = {i: {**s, "detected": detected} for i, s in sc.on.items()}
+    sc.step(2)
+    for i in range(3, 10):
+        del sc.on[i]
+        sc.step(1, [synth.ev("delete", i, why="absent")])
+    sc.step(10)
+    return _feed(sc.frames)
+
+
+def test_a_visit_whose_first_frame_only_remembers_the_trays_stones_is_a_new_tray() -> None:
+    # a board that drove off: the stones the world remembers where it stood say nothing about the belt
+    trays = _drove_off(detected=False)
+    assert [t.n for t in trays] == [1, 2]
+    assert [s.status for s in trays[0].stones] == ["on"] * 10
+    assert [f.kind for f in trays[0].facts if f.kind in ("removed", "added")] == []
+
+
+def test_a_visit_whose_first_frame_detects_the_trays_stones_goes_on_as_the_same_tray() -> None:
+    trays = _drove_off(detected=True)
+    assert [t.n for t in trays] == [1]
+    assert [s.status for s in trays[0].stones] == ["removed"] * 10
+    assert {f.certain for f in trays[0].facts if f.kind == "removed"} == {False}
+
+
+def _jolt(kept: int, detected: int, new: int = 0, unknown: int = 0, held: int = 0) -> list[Tray]:
+    """Ten stones arrive; the conveyor jolts; the next stop's first frame shows `kept` of them only remembered (not
+    detected) and the next `detected` of them detected where they stood, `new` detected stones with ids the tray
+    never saw (a rename, or another board's), `unknown` remembered ids it never saw and `held` detected stones it
+    never saw in a hand (mode `carry`, gone after that frame); after it the world detects them all."""
+    sc = _Scene()
+    sc.on = {i: synth.stone(i, -0.9 + 0.2 * i) for i in range(10)}
+    sc.step(12)
+    sc.step(3, motion="moving")
+    for i in range(kept + detected, 10):
+        del sc.on[i]
+    for i in range(kept):
+        sc.on[i] = {**sc.on[i], "detected": False}
+    for k in range(new):
+        sc.on[100 + k] = synth.stone(100 + k, -0.9 + 0.2 * (kept + detected + k))
+    for k in range(unknown):
+        sc.on[200 + k] = {**synth.stone(200 + k, -0.9 + 0.2 * k, 0.4), "detected": False}
+    for k in range(held):
+        sc.on[300 + k] = {**synth.stone(300 + k, -0.9 + 0.2 * k, -0.4), "mode": "carry"}
+    sc.step(1, [synth.ev("new", 100 + k) for k in range(new)])
+    sc.on = {i: {**s, "detected": True} for i, s in sc.on.items() if i < 300}
+    sc.step(11)
+    return _feed(sc.frames)
+
+
+def test_a_visit_goes_on_when_its_detected_stones_were_seen_whatever_else_it_remembers() -> None:
+    # nine detected tray stones and two remembered ids the tray never saw: all the detected stones were seen
+    assert [t.n for t in _jolt(kept=0, detected=9, unknown=2)] == [1]
+
+
+def test_a_visit_whose_only_detected_stone_is_new_is_a_new_tray_however_many_it_remembers() -> None:
+    # nine remembered tray stones and one detected stone the tray never saw: no detected stone says it is the same board
+    assert [t.n for t in _jolt(kept=9, detected=0, new=1)] == [1, 2]
+
+
+def test_a_jolt_that_leaves_most_stones_remembered_and_renames_one_it_sees_goes_on() -> None:
+    # two of the three detected stones were seen (less than nine tenths), but nine of all ten were: the same board
+    assert [t.n for t in _jolt(kept=7, detected=2, new=1)] == [1]
+
+
+def test_a_visit_with_few_of_its_stones_seen_is_a_new_tray_although_some_were_detected() -> None:
+    # two of the four detected stones and two of all ten were seen
+    assert [t.n for t in _jolt(kept=0, detected=2, new=2, unknown=6)] == [1, 2]
+
+
+def test_a_visit_leaves_out_the_stones_a_hand_holds() -> None:
+    # nine detected tray stones and two held stones the tray never saw: only the nine count, and all were seen
+    assert [t.n for t in _jolt(kept=0, detected=9, held=2)] == [1]
 
 
 def test_a_visit_with_fewer_than_nine_tenths_of_its_stones_seen_is_a_new_tray() -> None:

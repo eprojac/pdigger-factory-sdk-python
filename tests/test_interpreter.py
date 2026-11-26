@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from typing import Any
 
 import httpx
@@ -24,7 +25,7 @@ from pdigger_factory_sdk import (
 )
 from pdigger_factory_sdk import interpreter as interpreter_module
 from pdigger_factory_sdk import streams as streams_module
-from pdigger_factory_sdk.interpreter import FrameRef, _sort_key
+from pdigger_factory_sdk.interpreter import FrameRef, _hand_step, _sort_key
 from pdigger_factory_sdk.models import Frame
 from pdigger_factory_sdk.testing import FakeExhausted, FakeFactory
 
@@ -363,6 +364,59 @@ def test_frames_without_hands() -> None:
     f["world"]["hands"] = {}
     core, _ = run(f)
     assert core.state.hands.left.state is None
+
+
+def test_hands_count_each_frames_step_the_media_time_since_the_sessions_previous_frame() -> None:
+    core, _ = run(
+        # a plant camera: g counts the frames its worker released, 0.3 s apart (then 0.31 s, a frame without a world,
+        # 0.24 s)
+        frame(100, t=30, left="grasp"),
+        frame(101, t=30.3, left="grasp"),
+        frame(102, t=30.61),
+        frame(103, t=30.95, with_world=False),
+        frame(104, t=31.19, left="grasp"),
+        frame(104, t=31.19),  # the same frame again: dropped, it adds nothing
+        # after a gap (two frames the unit skipped, 8.81 s) a frame adds the session's previous step, 0.24 s
+        frame(107, t=40, left="grasp"),
+        # a new session's first frame adds one grid frame, 0.2 s; after a gap, the previous step again
+        frame(7, t=1.4, session=2, left="grasp"),
+        frame(9, t=1.8, session=2, left="grasp"),
+    )
+    s = core.summary()
+    assert s.hands["left"]["grasp"] == 1.38  # 200 + 300 + 240 + 240 + 200 + 200 ms
+    assert s.hands["left"]["free"] == 0.31
+    assert s.hands["right"]["free"] == 1.69
+    assert s.media_seconds == 10.4
+
+
+def test_a_frame_steps_by_its_media_time_after_the_grid_frame_before_it_else_by_the_previous_step() -> None:
+    assert _hand_step(None, 5, 1) == 200  # a session's first frame
+    assert _hand_step((4, 0.8, 200), 5, 1.1) == 300
+    assert _hand_step((4, 0.8, 250), 6, 1.1) == 250  # after a gap
+    assert _hand_step((4, 0.8, 250), 5, math.nan) == 250
+    assert _hand_step((4, math.nan, 250), 5, 1) == 250
+    assert _hand_step((4, 0.8, 250), 5, math.inf) == 250
+    assert _hand_step((4, -math.inf, 250), 5, 1) == 250
+    assert _hand_step((4, 1, 250), 5, 1) == 250  # a t not after the previous one
+    assert _hand_step((4, 1, 250), 5, 0.5) == 250
+    assert _hand_step((4, 1, 250), 5, 1.0004) == 250  # below 1 ms
+    assert _hand_step((4, 1, 250), 5, 1.0006) == 1
+    assert _hand_step((4, 0, 250), 5, 2147483.6) == 2147483600
+    assert _hand_step((4, 0, 250), 5, 2147483.7) == 250  # 2^31 ms or more
+    assert _hand_step((4, -1e308, 250), 5, 1e308) == 250  # the difference overflows: no error
+
+
+def test_a_time_no_double_holds_takes_the_previous_step() -> None:
+    # SDK-DESIGN.md 2.3: json reads a whole number of 400 digits as an int, which no double holds
+    huge = json.loads("1" + "0" * 400)
+    assert _hand_step((4, 0.8, 250), 5, huge) == 250
+    assert _hand_step((4, huge, 250), 5, 1.4) == 250
+    assert _hand_step((4, -huge, 250), 5, huge) == 250
+    assert _hand_step((4, huge, 250), 5, huge + 1) == 1000  # their difference, a whole number, is 1 s
+    late = frame(5, with_world=False)
+    late["t"] = huge
+    _, ups = run(frame(4, t=0.8), late, frame(6, t=1.4))  # a frame without a world at such a time raises nothing
+    assert [u.frame.g for u in ups if u.frame] == [4, 5, 6]
 
 
 def test_sort_key_edge_cases() -> None:
