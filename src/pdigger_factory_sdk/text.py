@@ -32,7 +32,21 @@ __all__ = [
     "verb",
 ]
 
-EVENT_TYPES = ("new", "confirm", "freeze", "push", "lift", "hinge", "carry", "place", "drop", "gone", "delete", "split")
+EVENT_TYPES = (
+    "new",
+    "confirm",
+    "freeze",
+    "push",
+    "lift",
+    "hinge",
+    "carry",
+    "place",
+    "drop",
+    "gone",
+    "delete",
+    "split",
+    "sheet",
+)
 """The world's event types, in the order the summary lists them (`other` counts the rest)."""
 
 HAND_STATES = ("free", "touch", "grasp", "hinge", "carry")
@@ -46,6 +60,7 @@ DELETE_REASONS = {
     "empty": "its place is empty",
     "hand": "a hand emptied its place",
     "carried-away": "carried away",
+    "sheet": "gone from under a sheet",
 }
 """The text of a `delete` event's `why`; any other `why` is printed as it is."""
 
@@ -210,7 +225,7 @@ def verb(side: str | None, word: str) -> str:
     return _PLURAL[word] if side == "both" else word
 
 
-def join_ids(ids: Sequence[int | None]) -> str:
+def join_ids(ids: Sequence[int | str | None]) -> str:
     """`3`, `3 and 5`, `3, 5 and 9` (a missing id prints `?`, no ids print `?`)."""
     parts = [_id(i) for i in ids] or ["?"]
     if len(parts) == 1:
@@ -218,8 +233,16 @@ def join_ids(ids: Sequence[int | None]) -> str:
     return ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
-def _id(i: int | None) -> str:
+def _id(i: int | str | None) -> str:
     return "?" if i is None else str(i)
+
+
+def _stones(ids: Sequence[int | str]) -> str:
+    if len(ids) <= 1:
+        return f"stone {join_ids(ids)}"
+    if len(ids) <= 6:
+        return "stones " + join_ids(ids)
+    return "stones " + ", ".join(str(i) for i in ids[:6]) + f" and {len(ids) - 6} more"
 
 
 def event_sentence(
@@ -229,6 +252,7 @@ def event_sentence(
     why: str | None = None,
     into: Sequence[int] | None = None,
     source: str | None = None,
+    ids: Sequence[int] | None = None,
 ) -> str:
     """The sentence of an event (section 4.1), without its clock."""
     i = _id(stone_id)
@@ -267,25 +291,26 @@ def event_sentence(
         if len(into) == 1:
             return f"stone {i} is trimmed"
         return f"stone {i} splits into {join_ids(into)}"
+    if type == "sheet":
+        if why in ("laid", "lifted"):
+            prep = "over" if why == "laid" else "off"
+            return f"a sheet is {why}" + (f" {prep} {_stones(ids)}" if ids else "")
+        return "a sheet event" + (f" ({why})" if why else "")
     return f"stone {i}: {type}"
 
 
 def describe_event(event: EventLike) -> str:
     """`"{clock} {sentence}"`, for example `21:17.8 Right hand lifts stone 2660`."""
-    sentence = event_sentence(event.type, event.stone_id, event.hand, event.why, event.into, event.source)
+    sentence = event_sentence(
+        event.type, event.stone_id, event.hand, event.why, event.into, event.source, getattr(event, "ids", None)
+    )
     return f"{clock(event.t)} {sentence}"
 
 
 def describe_push(burst: PushLike) -> str:
     """A push burst (section 4.2), for example `0:20.5 Both hands push stones 86, 90 and 94 (6 pushes in 0.6 s)`."""
     side = burst.hand
-    ids = burst.stones
-    if len(ids) <= 1:
-        what = f"stone {join_ids(ids)}"
-    elif len(ids) <= 6:
-        what = "stones " + join_ids(ids)
-    else:
-        what = "stones " + ", ".join(str(i) for i in ids[:6]) + f" and {len(ids) - 6} more"
+    what = _stones(burst.stones)
     n = burst.pushes
     tail = "(1 push)" if n == 1 else f"({n} pushes in {fmt(burst.duration or 0.0, 1)} s)"
     return f"{clock(burst.start.t)} {hand_word(side)} {verb(side, 'pushes')} {what} {tail}"
@@ -327,10 +352,14 @@ def describe_tray_fact(fact: TrayFactLike) -> str:
     c, n, k, i = clock(fact.t), fact.tray, fact.kind, fact.stone
     if k == "arrived":
         return f"{c} tray {n} arrived: {fact.stones} stones"
+    if k == "sheet":
+        action = "laid over" if fact.code == "sheet_laid" else "lifted off"
+        return f"{c} tray {n}: a sheet was {action} {_stones(getattr(fact, 'tray_stones', ()))}"
     if k == "leaving":
+        under = getattr(fact, "under_sheet", 0)
         return (
             f"{c} tray {n} leaving: {fact.stones} stones ({fact.sure} sure), {fact.added} added, "
-            f"{fact.removed} removed, {fact.unclear} unclear"
+            f"{fact.removed} removed, {fact.unclear} unclear" + (f", {under} under a sheet" if under else "")
         )
     if k == "unsure":
         if fact.opened is not None:
@@ -378,10 +407,15 @@ def describe_summary(summary: Mapping[str, Any]) -> str:
         f"removed {m['removed']}, interrupted {m['interrupted']}, partial {m['partial']}, carried {m['carried']}), "
         f"mean {mean_d} s, {mean_u} units",
         f"push bursts: {p['total']} (left {p['left']}, right {p['right']}, both {p['both']}), pushes {p['pushes']}",
-        "events: " + ", ".join(f"{k} {e[k]}" for k in (*EVENT_TYPES, "other")),
+        "events: " + ", ".join(f"{k} {e[k]}" for k in (*EVENT_TYPES, "other") if k != "sheet" or e.get(k)),
         f"trays: {trays['total']} (arrived {trays['arrived']}), stones at arrival {trays['stones']}, "
         f"added {trays['added']} (+{trays['added_unclear']} unclear), removed {trays['removed']} "
-        f"(+{trays['removed_unclear']} unclear), not sure {trays['unsure']}",
+        f"(+{trays['removed_unclear']} unclear), not sure {trays['unsure']}"
+        + (
+            f", sheets laid {trays.get('sheets', 0)}, under a sheet {trays.get('under_sheet', 0)}"
+            if trays.get("sheets") or trays.get("under_sheet")
+            else ""
+        ),
     ]
     for side in ("left", "right"):
         lines.append(f"{side} hand: " + ", ".join(f"{k} {clock(hands[side][k])}" for k in HAND_STATES))

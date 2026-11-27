@@ -390,3 +390,11 @@ newer than the newest is a revision (a higher `world.rev`) or a duplicate (dropp
 only once per frame. A new frame's events are emitted, fed to the activities, and its world replaces the state. A
 frame without a world changes only `g`, `t` and the cards. The full rules are in
 [spec/SDK-DESIGN.md](../spec/SDK-DESIGN.md#4-interpreter-rules-golden-tested), section 4.
+
+### A fixed inspection area
+
+For a stationary camera with a measured pallet rectangle, pass its native-pixel bounds to the core as
+`InterpreterCore(tray_bounds=(left, top, right, bottom))`. Use that core with `factory.interpreter(core=core)`
+or `replay.updates(core=core)`. Two directly observed stones must keep their positions inside the area on consecutive
+frames. At such a stop, retiring an unseen background track outside the rectangle can leave the arrival count undisturbed.
+The event stream still includes that retirement. Choose the bounds for the camera the core is following.

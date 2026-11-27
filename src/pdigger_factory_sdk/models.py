@@ -1902,6 +1902,13 @@ class StoneView:
     """Absent or `model`: a stone the model boxed. `image`: one it never boxed, made from the image (a filled hole,
     or the new part of a split; fixer thin-v1).
     """
+    under_sheet: bool = False
+    """Present (true) only on a stone under a paper sheet (fixer thin-v1 on cameras with sheet detection enabled):
+    usually mode `kept` and `detected` false (the model rarely boxes a stone through thin paper; such a stone
+    keeps the flag while its face still reads paper). It stays where it was last seen and is deleted with why
+    `sheet` when its board moves, the next layer comes over it or its paper comes off (its face no longer reads
+    paper, or it is detected on two packets that do not). See the `sheet` event.
+    """
     look: StoneLook | None = None
     raw_json: dict[str, Any] = _field(default_factory=dict, repr=False, compare=False)
     """The JSON object this was parsed from, unknown fields included."""
@@ -1922,6 +1929,7 @@ class StoneView:
             solid=p.req("solid", Solid.from_json),
             placed=p.opt("placed", as_int),
             source=p.opt("source", as_str),
+            under_sheet=p.opt("under_sheet", as_bool, False),
             look=p.opt("look", _look_or_none),
             raw_json=p.o,
         )
@@ -2058,8 +2066,19 @@ class WorldEvent:
     id: int | None = None
     side: str | None = None
     why: str | None = None
+    """`sheet`: `laid` (a paper sheet was laid over the stones `ids`) or `lifted` (it came off them). `delete` with
+    why `sheet`: a stone under paper left: its board moved, the next layer came over it, or its paper came off
+    (each stone of a `lifted` is deleted so in the same frame: the paper comes off as its board leaves, and a
+    stone seen there next is a new one).
+    """
     into: list[int] | None = None
     """`split`: the stone's own id, which keeps the larger part, then the new part's (which has no `new` of its own)."""
+    ids: list[int] | None = None
+    """`sheet`: the stones the paper was laid over or came off, ascending (an empty list identifies no stones); a
+    sheet laid in several moves gives one `laid` per move, with the stones it newly covers. A `sheet` event has no
+    `id`: two of them are told apart by `why` and `ids` (a frame can hold a `laid` and a `lifted`, and a revised
+    frame can hold a `laid` of other stones).
+    """
     source: str | None = None
     """`new` of a stone the model never boxed: `image` (fixer thin-v1)."""
     raw_json: dict[str, Any] = _field(default_factory=dict, repr=False, compare=False)
@@ -2075,6 +2094,7 @@ class WorldEvent:
             side=p.opt("side", as_str),
             why=p.opt("why", as_str),
             into=p.opt("into", as_arr),
+            ids=p.opt("ids", as_arr),
             source=p.opt("source", as_str),
             raw_json=p.o,
         )
@@ -2207,16 +2227,16 @@ class WorldSpeckle:
     >= 3, quiet >= 5 and every stone confirmed), or the first later calm frame of the tray when the arrival's
     could not be kept; `at` is a later calm frame of the tray: a calm moment (at most one a minute) or the last
     calm frame before the visit ended. Nothing is matched while the unit's speckle service does not run. Every
-    stone not held at either moment is checked at the other by its speckle: the full-resolution luma of the
-    interpreted crop, high-passed (minus its Gaussian blur of sigma 2.5 px); its template is the inner 62 % of its
-    outline's box (for a stone whose box is too large for the unit's GPU kernels, wider or higher than 192 px or
-    larger than about 140 x 140 px, such as a long kerb: the central part of that box the kernels take, shaved
-    from its longer side). It is checked where the other moment's stones (not held) are, centred on each one's
-    inner box and up to 24 px off, and at its own place, up to 40 px off; coarse to fine: the whole template on
-    the band image's even pixels, the 3 best places per turn (0 or 180 degrees) refined within 2 px at full
-    resolution with that turn's five angles. A stone whose best refined place scores under 0.30 is also looked for
-    anywhere within 128 px of its own place (up to 8 more places per turn). Everything stays within the box of
-    both moments' outlines widened by 60 px.
+    stone not held at either moment, and under a paper sheet (`under_sheet`) at neither, is checked at the other
+    by its speckle: the full-resolution luma of the interpreted crop, high-passed (minus its Gaussian blur of
+    sigma 2.5 px); its template is the inner 62 % of its outline's box (for a stone whose box is too large for the
+    unit's GPU kernels, wider or higher than 192 px or larger than about 140 x 140 px, such as a long kerb: the
+    central part of that box the kernels take, shaved from its longer side). It is checked where the other
+    moment's stones (not held) are, centred on each one's inner box and up to 24 px off, and at its own place, up
+    to 40 px off; coarse to fine: the whole template on the band image's even pixels, the 3 best places per turn
+    (0 or 180 degrees) refined within 2 px at full resolution with that turn's five angles. A stone whose best
+    refined place scores under 0.30 is also looked for anywhere within 128 px of its own place (up to 8 more
+    places per turn). Everything stays within the box of both moments' outlines widened by 60 px.
     """
 
     v: int
@@ -2492,6 +2512,7 @@ class EventLogEntry:
     side: str | None = None
     why: str | None = None
     into: list[int] | None = None
+    ids: list[int] | None = None
     source: str | None = None
     raw_json: dict[str, Any] = _field(default_factory=dict, repr=False, compare=False)
     """The JSON object this was parsed from, unknown fields included."""
@@ -2508,6 +2529,7 @@ class EventLogEntry:
             side=p.opt("side", as_str),
             why=p.opt("why", as_str),
             into=p.opt("into", as_arr),
+            ids=p.opt("ids", as_arr),
             source=p.opt("source", as_str),
             raw_json=p.o,
         )

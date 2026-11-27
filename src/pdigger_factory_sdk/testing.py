@@ -116,7 +116,21 @@ _JPEG = base64.b64decode(
 
 LAYERS = ("raw", "overlay", "scene", "cards", "world")
 DEFAULT_LAYERS = ("overlay", "scene", "cards", "world")
-EVENT_TYPES = ("new", "confirm", "freeze", "push", "lift", "hinge", "carry", "place", "drop", "gone", "delete", "split")
+EVENT_TYPES = (
+    "new",
+    "confirm",
+    "freeze",
+    "push",
+    "lift",
+    "hinge",
+    "carry",
+    "place",
+    "drop",
+    "gone",
+    "delete",
+    "split",
+    "sheet",
+)
 
 DelayFn = Callable[[str, int], Awaitable[None]]
 """`delay(operation, index)`: awaited before event number `index` of a stream of `operation`."""
@@ -1000,7 +1014,7 @@ class FakeFactory(httpx.AsyncBaseTransport, httpx.BaseTransport):
 
     async def _op_getApiRoot(self, args: dict[str, str], request: httpx.Request) -> Reply:
         root = {
-            "api": "2.2.0",
+            "api": "2.3.0",
             "build": self._build(),
             "boot": self.boot,
             "backend": "fake",

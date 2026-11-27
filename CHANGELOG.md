@@ -3,6 +3,17 @@
 All notable changes to this SDK. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 version follows [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - Unreleased
+
+### Added
+
+- API 2.3 sheet events carry the world ids involved in laying or lifting paper. Frame revisions deduplicate these
+  events by action and ids. The event-log filter and fake server accept `sheet`.
+- Tray stones retain their identities under paper. A tray report records the time and stones for each sheet action
+  and counts the stones leaving under a sheet. The synthetic recordings cover moving and stationary board changes.
+- `InterpreterCore(tray_bounds=...)` accepts a fixed inspection rectangle in native image coordinates. Two
+  continuously observed stones inside it can corroborate a stop when the world retires an unseen track outside it.
+
 ## [1.0.1] - 2026-11-26
 
 This patch release also adds a public field, `HandState.away`; by Semantic Versioning a release that adds API is a minor

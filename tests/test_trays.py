@@ -9,8 +9,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from pdigger_factory_sdk import Frame, InterpreterCore, Replay, Summary, TrayFact
-from pdigger_factory_sdk.models import ClockEvent
+from pdigger_factory_sdk.models import ClockEvent, WorldEvent
 from pdigger_factory_sdk.testing import FakeFactory
 from pdigger_factory_sdk.trays import TrayCounts, stamp
 
@@ -29,6 +31,55 @@ def clocked_core(**options: Any) -> InterpreterCore:
     line = next(x for x in recording_lines(SYNTH) if x.get("sse") == "clock")
     core.clock(ClockEvent.from_json(line["data"]))
     return core
+
+
+def test_fixed_tray_area_only_excludes_unseen_background_retirements_from_settling() -> None:
+    inside = [[10.0, 10.0], [18.0, 10.0], [18.0, 18.0], [10.0, 18.0]]
+    outside = [[120.0, 20.0], [128.0, 20.0], [128.0, 28.0], [120.0, 28.0]]
+    bounds = (0.0, 0.0, 100.0, 100.0)
+
+    def arrival(
+        area: tuple[float, float, float, float] | None,
+        polygon: list[list[float]] = outside,
+        *,
+        reason: str = "stranded",
+        prior: bool = True,
+        anchor_count: int = 2,
+        mode: str = "kept",
+        was_seen: bool = False,
+    ) -> int:
+        core = InterpreterCore(tray_bounds=area)
+        deleted_ids: list[int | None] = []
+        source = synthetic_frames()
+        for frame in source[:12]:
+            assert frame.world
+            world = frame.world
+            source_stone = world.stones[0]
+            world.stones = [
+                dataclasses.replace(stone, mode="seen", detected=True, outline=inside)
+                for stone in world.stones[:anchor_count]
+            ]
+            if prior and frame.g < 4:
+                world.stones.append(
+                    dataclasses.replace(source_stone, id=99, mode=mode, detected=was_seen, outline=polygon)
+                )
+            world.stats = dataclasses.replace(world.stats, stones=len(world.stones), confirmed=len(world.stones))
+            world.events = [WorldEvent(type="delete", id=99, why=reason)] if frame.g == 4 else []
+            deleted_ids.extend(e.stone_id for e in core.feed(frame).events if e.type == "delete")
+        core.end()
+        (tray,) = core.trays()
+        assert tray.arrived
+        assert deleted_ids == [99]
+        return tray.arrived.g
+
+    assert arrival(bounds) == 4
+    assert arrival(bounds, reason="outside") == 4
+    assert arrival(None) == arrival(bounds, inside) == arrival(bounds, reason="hand") == 7
+    assert arrival(bounds, prior=False) == arrival(bounds, anchor_count=1) == 7
+    assert arrival(bounds, mode="carry") == arrival(bounds, was_seen=True) == 7
+    assert arrival(bounds, outside[:2]) == arrival(bounds, [[120.0], *outside[1:]]) == 7
+    with pytest.raises(ValueError, match="tray_bounds"):
+        InterpreterCore(tray_bounds=(10, 0, 10, 20))
 
 
 def test_a_tray_as_values() -> None:

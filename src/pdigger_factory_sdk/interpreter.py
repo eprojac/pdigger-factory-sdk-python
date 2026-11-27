@@ -66,7 +66,7 @@ SPECKLE_KEPT = 1024
 """The unit's speckle answers that `InterpreterCore.speckle()` keeps (the newest)."""
 
 EventKey = tuple[str, int | None, str | None, tuple[int, ...] | None]
-"""`(type, id, side, into)`: an event of a revised frame with a key already emitted for that frame is not repeated."""
+"""Events use (type, id, side, into). Sheet events use ('sheet', None, action, sorted ids)."""
 
 _BURST_SIDES = {"left": "left", "right": "right", "both": "both"}
 _OUTCOMES = {"place": "placed", "drop": "dropped", "gone": "carried_away", "delete": "removed"}
@@ -121,6 +121,7 @@ class Event:
     hand: str | None = None
     why: str | None = None
     into: list[int] | None = None
+    ids: list[int] | None = None
     source: str | None = None
     tray_stone: str | None = None
     stone: StoneView | None = field(default=None, compare=False, repr=False)
@@ -136,7 +137,7 @@ class Event:
 
     @property
     def key(self) -> EventKey:
-        return _key(self.type, self.stone_id, self.hand, self.into)
+        return _key(self.type, self.stone_id, self.hand, self.into, self.why, self.ids)
 
     def to_dict(self) -> dict[str, Any]:
         """A JSON-ready dict (the stone snapshot is left out)."""
@@ -151,6 +152,7 @@ class Event:
             "hand": self.hand,
             "why": self.why,
             "into": self.into,
+            **({"ids": list(self.ids)} if self.ids is not None else {}),
             "source": self.source,
             "tray_stone": self.tray_stone,
         }
@@ -413,7 +415,7 @@ class Summary:
             "last_t": self.last_t,
             "media_seconds": self.media_seconds,
             "gaps": self.gaps,
-            "events": dict(self.events),
+            "events": {k: v for k, v in self.events.items() if k != "sheet" or v},
             "moves": {
                 "total": m.total,
                 "placed": m.placed,
@@ -448,7 +450,7 @@ class Summary:
             last_t=d["last_t"],
             media_seconds=d["media_seconds"],
             gaps=d["gaps"],
-            events=dict(d["events"]),
+            events={**_event_counts(), **d["events"]},
             moves=MoveCounts(**d["moves"]),
             push_bursts=PushCounts(**d["push_bursts"]),
             stones=StoneCounts(**d["stones"]),
@@ -461,13 +463,17 @@ class Summary:
         return text.describe_summary(self.to_dict())
 
 
-def _key(type: str, stone_id: int | None, side: str | None, into: list[int] | None) -> EventKey:
+def _key(
+    type: str, stone_id: int | None, side: str | None, into: list[int] | None, why: str | None, ids: list[int] | None
+) -> EventKey:
+    if type == "sheet":
+        return (type, None, why, tuple(sorted(set(ids or ()))))
     return (type, stone_id, side, None if into is None else tuple(into))
 
 
 def event_key(e: WorldEvent) -> EventKey:
-    """The key of a world event: `(type, id, side, into)`."""
-    return _key(e.type, e.id, e.side, e.into)
+    """The event's identity within a frame, including the action and stone ids for sheets."""
+    return _key(e.type, e.id, e.side, e.into, e.why, e.ids)
 
 
 def _sort_key(a: Activity) -> tuple[int, int, int, int, str]:
@@ -504,9 +510,26 @@ class InterpreterCore:
     Args:
         revision_window: Grid frames of each session kept for revisions and duplicates (the server retains 512).
         trays_kept: Trays that have left that `trays()` keeps, the newest (`None`: every one).
+        tray_bounds: Fixed inspection rectangle in native image pixels (left, top, right, bottom).
+            While waiting for a tray to settle, retiring an unseen track wholly outside this area
+            leaves its inventory undisturbed. All world events are still delivered.
     """
 
-    def __init__(self, *, revision_window: int = 4096, trays_kept: int | None = TRAYS_KEPT) -> None:
+    def __init__(
+        self,
+        *,
+        revision_window: int = 4096,
+        trays_kept: int | None = TRAYS_KEPT,
+        tray_bounds: tuple[float, float, float, float] | None = None,
+    ) -> None:
+        if tray_bounds is not None and not (
+            len(tray_bounds) == 4
+            and all(math.isfinite(v) for v in tray_bounds)
+            and tray_bounds[0] < tray_bounds[2]
+            and tray_bounds[1] < tray_bounds[3]
+        ):
+            raise ValueError("tray_bounds must be a finite rectangle with positive width and height")
+        self._tray_bounds = tray_bounds
         self._window = revision_window
         self._session: int | None = None
         self._video: str | None = None
@@ -739,7 +762,7 @@ class InterpreterCore:
 
     # ---- rules -----------------------------------------------------------------------------------------------------
     def _new_ledger(self, session: int, video: str) -> TrayLedger:
-        return TrayLedger(self._s.trays, session, video, self._trays.append)
+        return TrayLedger(self._s.trays, session, video, self._trays.append, self._tray_bounds)
 
     def _wall(self, session: int, t: float) -> float | None:
         # as SessionClock.wall_of: the playhead runs from the end of the hold while playing, from the pause while paused
@@ -795,6 +818,7 @@ class InterpreterCore:
             hand=e.side,
             why=e.why,
             into=e.into,
+            ids=e.ids,
             source=e.source,
             tray_stone=None if e.id is None else links.get(e.id),
             stone=stone,

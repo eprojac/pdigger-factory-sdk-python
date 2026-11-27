@@ -57,6 +57,10 @@ confidence score.
 To replay a longer recording, pass its path or URL to the same command.
 [Browse the published recordings](https://factory.pdigger.com/developers/data/).
 
+A camera with sheet detection enabled reports when a worker lays paper over stones or lifts it off. On a completed
+tray, `report.sheet_facts` gives each action's time and tray stone ids. `report.under_sheet` lists the stones that
+left the camera under paper. A covered stone keeps its last known identity.
+
 ## Follow a live unit
 
 Use the same example with your unit’s address to print a report as each tray leaves the camera.

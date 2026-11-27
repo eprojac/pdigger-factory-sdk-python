@@ -450,6 +450,8 @@ class TrayStone:
     speckle: StoneSpeckle | None = None
     by_speckle: bool = False
     evidence: str | None = None
+    under_sheet: bool = False
+    sheet_since: TrayPoint | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -473,6 +475,8 @@ class TrayStone:
             "speckle": None if self.speckle is None else self.speckle.to_dict(),
             "by_speckle": self.by_speckle,
             "evidence": self.evidence,
+            **({"under_sheet": True} if self.under_sheet else {}),
+            **({"sheet_since": self.sheet_since.to_dict()} if self.sheet_since is not None else {}),
         }
 
 
@@ -513,6 +517,8 @@ class TrayFact:
     bar: int | None = None
     t_id: int | None = None
     open: tuple[TrayOpen, ...] | None = None
+    tray_stones: tuple[str, ...] = ()
+    under_sheet: int | None = None
 
     def describe(self) -> str:
         """The fact as one line: `0:45.5 tray 1: stone 20261122T023847.0Z-1-117 was removed`."""
@@ -549,6 +555,8 @@ class TrayFact:
             "bar": self.bar,
             "t_id": self.t_id,
             "open": None if self.open is None else [o.to_dict() for o in self.open],
+            **({"tray_stones": list(self.tray_stones)} if self.tray_stones else {}),
+            **({"under_sheet": self.under_sheet} if self.under_sheet else {}),
         }
 
 
@@ -617,6 +625,8 @@ class TrayCounts:
     removed: int = 0
     removed_unclear: int = 0
     unsure: int = 0
+    sheets: int = 0
+    under_sheet: int = 0
 
     def to_dict(self) -> dict[str, int]:
         return {
@@ -628,6 +638,7 @@ class TrayCounts:
             "removed": self.removed,
             "removed_unclear": self.removed_unclear,
             "unsure": self.unsure,
+            **({"sheets": self.sheets, "under_sheet": self.under_sheet} if self.sheets or self.under_sheet else {}),
         }
 
 
@@ -721,6 +732,9 @@ class TrayReport:
     unclear: int
     unsure: int
     complete: bool
+    under_sheet: tuple[str, ...] = ()
+    sheets: int = 0
+    sheet_facts: tuple[TrayFact, ...] = ()
 
     def describe(self) -> str:
         """`tray 1 (2026-11-22T02:38:47.0Z), 0:22.5 to 2:24.0: 11 removed, 13 added, 8 moved, not complete:
@@ -730,10 +744,14 @@ class TrayReport:
             f"tray {self.tray}{wall}, {self.arrived.clock} to {self.left.clock}: {len(self.removed)} removed, "
             f"{len(self.added)} added, {len(self.moved)} moved"
         )
+        if self.under_sheet:
+            head += f", {len(self.under_sheet)} under a sheet"
         if not self.complete:
             parts = [f"{self.unclear} unclear"] * (self.unclear > 0) + [f"{self.unsure} not sure"] * (self.unsure > 0)
             head += ", not complete: " + ", ".join(parts)
-        return "\n".join([head, *("  " + c.describe() for c in (*self.removed, *self.added, *self.moved))])
+        lines = [head, *("  " + c.describe() for c in (*self.removed, *self.added, *self.moved))]
+        lines.extend("  " + fact.describe() for fact in self.sheet_facts)
+        return "\n".join(lines)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -749,6 +767,15 @@ class TrayReport:
             "unclear": self.unclear,
             "unsure": self.unsure,
             "complete": self.complete,
+            **(
+                {
+                    "under_sheet": list(self.under_sheet),
+                    "sheets": self.sheets,
+                    "sheet_facts": [f.to_dict() for f in self.sheet_facts],
+                }
+                if self.sheet_facts or self.under_sheet
+                else {}
+            ),
         }
 
 
@@ -804,6 +831,9 @@ def tray_report(tray: Tray) -> TrayReport | None:
         unclear=leaving.unclear or 0,
         unsure=unsure,
         complete=(leaving.unclear or 0) == 0 and leaving.sure == leaving.stones,
+        under_sheet=tuple(sorted(s.id for s in tray.stones if s.status == "on" and s.under_sheet)),
+        sheets=sum(f.code == "sheet_laid" for f in facts),
+        sheet_facts=tuple(f for f in facts if f.kind == "sheet"),
     )
 
 
@@ -885,7 +915,8 @@ def check_tray(tray: Tray) -> list[str]:
                 bad.add("C7")
             if not c:  # the checks below read the first and last candidate; C8 has nothing to check
                 continue
-            if o.kind == "unsure" and (c[0].kind != "world" or c[0].world_id != o.world_id):
+            first_kind = "world" if o.world_id is not None else "unseen"
+            if o.kind == "unsure" and (c[0].kind != first_kind or c[0].world_id != o.world_id):
                 bad.add("C7")
             if o.kind != "added" and not any(x.kind == "gone" for x in c):
                 bad.add("C7")
@@ -897,7 +928,11 @@ def check_tray(tray: Tray) -> list[str]:
                     cand.kind == "world" and cand.world_id in sure_world
                 ):
                     bad.add("C8")
-    if len({s.world_id for s in on}) != len(on) or any(s.world_id is None for s in on):
+    linked = [s.world_id for s in on if s.world_id is not None]
+    lifted = {sid for f in facts if f.kind == "sheet" and f.code == "sheet_lifted" for sid in f.tray_stones}
+    if len(set(linked)) != len(linked) or any(
+        s.world_id is None and (s.sure or s.under_sheet or s.id not in lifted) for s in on
+    ):
         bad.add("C6")
     for x in facts:
         if x.kind != "identified":
@@ -915,6 +950,33 @@ def check_tray(tray: Tray) -> list[str]:
             and (x.margin is None or x.margin >= M_ID)
         ):
             bad.add("C9")
+    covered: set[str] = set()
+    for fact in facts:
+        if fact.kind != "sheet":
+            continue
+        named = set(fact.tray_stones)
+        if (
+            not named
+            or len(named) != fact.stones
+            or tuple(sorted(named)) != fact.tray_stones
+            or any(sid not in by_id or by_id[sid].born.g > fact.g for sid in named)
+        ):
+            bad.add("C10")
+        if fact.code == "sheet_laid":
+            if named & covered:
+                bad.add("C10")
+            covered.update(named)
+        elif fact.code == "sheet_lifted" and named <= covered:
+            covered.difference_update(named)
+        else:
+            bad.add("C10")
+    under = sum(s.under_sheet and s.status == "on" for s in tray.stones)
+    if (
+        facts
+        and facts[-1].kind == "leaving"
+        and ((facts[-1].under_sheet or 0) != under or under > (facts[-1].stones or 0))
+    ):
+        bad.add("C11")
     return sorted(bad)
 
 
@@ -985,7 +1047,7 @@ def overlap_share(ws: StoneView, world: Sequence[StoneView]) -> float:
     reach = max(d[0], d[1])
     best = 0
     for o in world:
-        if o.id == ws.id:
+        if o.id == ws.id or o.under_sheet:
             continue
         od = o.solid.dims
         if dist(place_of(o), (x0, y0)) > (reach + max(od[0], od[1])) / 2:
@@ -1171,6 +1233,8 @@ class _Stone:
     born: TrayPoint
     first_place: Place = (0.0, 0.0)
     status: str = "on"
+    under_sheet: bool = False
+    sheet_since: TrayPoint | None = None
     sure: bool = True
     """Not given up: a stone in question keeps it (its view's `sure` is false meanwhile)."""
     added: bool = False
@@ -1197,6 +1261,8 @@ class _Stone:
     near_push: bool = False
     disturbed: int | None = None
     lost_g: int = 0
+    sheet_loss: bool = False
+    """The latest loss retired a tracking id during a partial lift on the same board."""
     late: bool = False
     box: bool = False
     unsure_code: str | None = None
@@ -1241,6 +1307,8 @@ class _Stone:
             world_id=self.world,
             status=self.status,
             sure=self.sure and q is None,
+            under_sheet=self.under_sheet,
+            sheet_since=self.sheet_since,
             added=self.added,
             certain=self.certain,
             born=self.born,
@@ -1344,7 +1412,15 @@ class TrayLedger:
     tell it where frames it could not read came (`skipped`), `close()` it when the session ends. Each tray that leaves
     goes to `on_close` as its `Tray`. Used by `InterpreterCore`; pure, no I/O."""
 
-    def __init__(self, counts: TrayCounts, session: int, video: str, on_close: Callable[[Tray], None]) -> None:
+    def __init__(
+        self,
+        counts: TrayCounts,
+        session: int,
+        video: str,
+        on_close: Callable[[Tray], None],
+        bounds: tuple[float, float, float, float] | None = None,
+    ) -> None:
+        self._bounds = bounds
         self._session = session
         self._video = video
         self._c = counts
@@ -1357,6 +1433,7 @@ class TrayLedger:
         self._calm_g = 0
         self._quiet = 0
         self._visit_start = 0
+        self._visit_seen: set[int] = set()
         self._ordinary_calm = 0
         self._quiet_epoch = 0
         self._clean_candidate: _VisitFrame | None = None
@@ -1406,6 +1483,30 @@ class TrayLedger:
             seen.add(s.id)
         if len(keep) != len(w.stones):
             w = dataclasses.replace(w, stones=keep)
+        tr = self._tray
+        if tr is not None and tr.arrived is not None and tr.last is not None:
+            retired = {e.id for e in w.events if e.type == "delete" and e.why == "sheet"}
+            covered = {wid for wid, s in tr.link.items() if s.under_sheet} if retired else set()
+            affected = covered & retired
+            if affected:
+                lifted = {wid for e in w.events if e.type == "sheet" and e.why == "lifted" for wid in e.ids or ()}
+                still_covered = covered - retired
+                anchors = sum(
+                    s.id in still_covered and s.under_sheet and dist(place_of(s), tr.link[s.id].place) <= NEAR
+                    for s in w.stones
+                )
+                same_board = anchors >= 2 or self._same_exposed_layer(tr, w, ref)
+                if self._on and not hole and w.motion == "static" and affected <= lifted and same_board:
+                    stones = [tr.link.pop(wid) for wid in sorted(affected)]
+                    self._sheet_laid(tr, stones, ref, out)
+                    self._sheet_fact(tr, stones, "sheet_lifted", ref, out)
+                    for stone in stones:
+                        self._lose(tr, stone, ref, sheet=True)
+                    tr.worked = True
+                else:
+                    self._close(out, boundary=ref, lifted=[tr.link[wid] for wid in sorted(covered & lifted)])
+                    self._stop, self._on = [], False
+                    return out
         if w.motion != "static":
             self._stop, self._on = [], False
             return out
@@ -1429,6 +1530,27 @@ class TrayLedger:
         return out
 
     # ---- rules ----
+    def _sheet_fact(self, tr: _Tray, stones: list[_Stone], code: str, ref: TrayPoint, out: list[TrayFact]) -> None:
+        if stones:
+            self._fact(
+                "sheet",
+                tr,
+                None,
+                ref,
+                out,
+                code=code,
+                stones=len(stones),
+                tray_stones=tuple(sorted(s.id for s in stones)),
+            )
+
+    def _sheet_laid(self, tr: _Tray, stones: list[_Stone], ref: TrayPoint, out: list[TrayFact]) -> None:
+        newly = [s for s in stones if s.under_sheet and s.sheet_since is None]
+        if newly:
+            for s in newly:
+                s.sheet_since = ref
+            self._c.sheets += 1
+            self._sheet_fact(tr, newly, "sheet_laid", ref, out)
+
     def _fact(self, kind: str, tr: _Tray, s: _Stone | None, ref: TrayPoint, out: list[TrayFact], **kw: Any) -> None:
         f = TrayFact(
             kind=kind,
@@ -1446,8 +1568,9 @@ class TrayLedger:
         out.append(f)
 
     def _begin(self, out: list[TrayFact]) -> None:
-        unheld = {s.id for s in self._stop[0][0].stones if s.mode not in _HELD}
-        ids = {s.id for s in self._stop[0][0].stones if s.mode not in _HELD and s.detected}
+        self._visit_seen.clear()
+        unheld = {s.id for s in self._stop[0][0].stones if s.mode not in _HELD and not s.under_sheet}
+        ids = {s.id for s in self._stop[0][0].stones if s.id in unheld and s.detected}
         tr = self._tray
         # a visit continues the open tray only on the camera's word (4.6.1): at least one of its first frame's detected
         # stones was seen on the tray, and nine tenths of those detected stones were, or nine tenths of all its stones
@@ -1482,11 +1605,41 @@ class TrayLedger:
         assert tr is not None
         t = ref.t
         by_id = {s.id: s for s in w.stones}
-        tr.ids |= set(by_id)
+        tr.ids.update(s.id for s in w.stones if not s.under_sheet)
+        self._visit_seen.update(s.id for s in w.stones if not s.under_sheet and s.detected)
         events = w.events
         self._store_looks(tr, w, by_id, ref)
         hand = any(e.type in _HAND_EVENTS or (e.type == "push" and e.side) for e in events)
-        change = any(e.type in _CHANGES for e in events)
+        changes = [e for e in events if e.type in _CHANGES]
+        change = bool(changes)
+        if changes and self._bounds and tr.arrived is None and not hole and tr.last and tr.last[1].g + 1 == ref.g:
+            previous = {s.id: s for s in tr.last[0].stones}
+            change = any(
+                e.type != "delete"
+                or e.why not in ("outside", "stranded")
+                or e.id is None
+                or e.id in self._visit_seen
+                or not self._retired_outside(previous.get(e.id), self._bounds)
+                for e in changes
+            )
+            if not change:
+                # Two continuously observed stones inside the rectangle corroborate the stationary inventory.
+                x0, y0, x1, y1 = self._bounds
+                change = (
+                    sum(
+                        s.id in previous
+                        and previous[s.id].detected
+                        and s.detected
+                        and s.mode == "seen"
+                        and not s.under_sheet
+                        and not previous[s.id].under_sheet
+                        and dist(place_of(s), place_of(previous[s.id])) <= NEAR
+                        and len(s.outline) >= 3
+                        and all(len(p) == 2 and x0 <= p[0] <= x1 and y0 <= p[1] <= y1 for p in s.outline)
+                        for s in w.stones
+                    )
+                    < 2
+                )
         self._quiet = 0 if any(e.type == "new" for e in events) else self._quiet + 1
         free = all(h is None or h.state == "free" for h in (w.hands.left, w.hands.right))
         untrusted = any(h is not None and bool(h.untrusted) for h in (w.hands.left, w.hands.right))
@@ -1540,10 +1693,28 @@ class TrayLedger:
                     del tr.store[wid]
                 tr.calm_world = w
                 self._arrive(tr, w, ref, out)
+                self._sheet_laid(tr, tr.stones, ref, out)
                 tr.arrival_links = {wid: s.id for wid, s in tr.link.items()}  # 4.6.12
                 tr.ids_at_arrival = set(tr.ids)
                 self._look_work(tr, w, ref, by_id, out)
             return
+        # Covered stones keep their existing identity and certainty. A model box through paper gives no observation.
+        uncovered: list[_Stone] = []
+        for wid, stone in tr.link.items():
+            view = by_id.get(wid)
+            if view is None:
+                continue
+            if view.under_sheet:
+                stone.under_sheet = True
+            elif stone.under_sheet:
+                uncovered.append(stone)
+        if uncovered:
+            self._sheet_laid(tr, uncovered, ref, out)
+            self._sheet_fact(tr, uncovered, "sheet_lifted", ref, out)
+            for stone in uncovered:
+                stone.under_sheet, stone.sheet_since = False, None
+        if not incomplete and self._calm >= CALM:
+            self._sheet_laid(tr, tr.stones, ref, out)
         # 1. where hands worked
         for e in events:
             if e.type in _HAND_EVENTS or (e.type == "push" and e.side) or (e.type == "delete" and e.why == "hand"):
@@ -1595,7 +1766,7 @@ class TrayLedger:
             for wid in sorted(tr.link):
                 s = tr.link[wid]
                 ws = by_id.get(wid)
-                if ws is not None and not ws.detected:
+                if not s.under_sheet and ws is not None and not ws.detected:
                     for rec in (s.run1, None if s.question is None else s.question.watch):
                         if rec is not None and t > rec.seen_t:
                             rec.spoilt = True
@@ -1603,6 +1774,8 @@ class TrayLedger:
         for wid in sorted(tr.link):
             s = tr.link[wid]
             ws = by_id.get(wid)
+            if s.under_sheet:
+                continue
             if ws is None:
                 if wid in tr.blinks:
                     continue
@@ -1636,13 +1809,13 @@ class TrayLedger:
                         )
         # 5. world stones no tray stone stands for
         for ws in w.stones:
-            if ws.id in tr.link or ws.id in tr.unid or ws.mode in _HELD:
+            if ws.id in tr.link or ws.id in tr.unid or ws.mode in _HELD or ws.under_sheet:
                 continue
             if inside_board(tr.board, place_of(ws)):
                 tr.unid[ws.id] = _Unid(born=ref, place=place_of(ws), size=size_of(ws))
         for wid in sorted(tr.unid):
             found = by_id.get(wid)
-            if found is None:
+            if found is None or found.under_sheet:
                 del tr.unid[wid]
                 continue
             u = tr.unid[wid]
@@ -1696,6 +1869,7 @@ class TrayLedger:
                     if (
                         s.status == "on"
                         and s.sure
+                        and not s.under_sheet
                         and s.world is not None
                         and observed is not None
                         and not observed.detected
@@ -1720,6 +1894,43 @@ class TrayLedger:
             for s in tr.stones:
                 s.calm_place = self._observed_place(s, by_id)
 
+    def _same_exposed_layer(self, tr: _Tray, w: WorldLayer, ref: TrayPoint) -> bool:
+        """The observed, uncovered part of a bounded stationary layer remains in the same places."""
+        if self._bounds is None or tr.last is None or tr.last[1].g + 1 != ref.g:
+            return False
+        x0, y0, x1, y1 = self._bounds
+
+        def visible(stone: StoneView) -> bool:
+            return (
+                stone.mode == "seen"
+                and stone.detected
+                and not stone.under_sheet
+                and len(stone.outline) >= 3
+                and all(len(p) == 2 and x0 <= p[0] <= x1 and y0 <= p[1] <= y1 for p in stone.outline)
+            )
+
+        before = {
+            s.id: s for s in tr.last[0].stones if s.id in tr.link and not tr.link[s.id].under_sheet and visible(s)
+        }
+        same = sum(
+            s.id in before and visible(s) and dist(place_of(before[s.id]), place_of(s)) <= NEAR for s in w.stones
+        )
+        return same >= 2 and 2 * same > len(before)
+
+    @staticmethod
+    def _retired_outside(stone: StoneView | None, bounds: tuple[float, float, float, float]) -> bool:
+        if stone is None or stone.mode != "kept" or stone.detected or stone.under_sheet:
+            return False
+        points = stone.outline
+        if len(points) < 3 or any(len(p) != 2 or not all(math.isfinite(v) for v in p) for p in points):
+            return False
+        return (
+            all(p[0] < bounds[0] for p in points)
+            or all(p[0] > bounds[2] for p in points)
+            or all(p[1] < bounds[1] for p in points)
+            or all(p[1] > bounds[3] for p in points)
+        )
+
     @staticmethod
     def _inventory_gap(tr: _Tray, ref: TrayPoint, by_id: dict[int, StoneView], quiet: bool, hole: bool) -> bool:
         """Veto incomplete calm frames independently of whether an absent stone can keep its identity."""
@@ -1731,7 +1942,7 @@ class TrayLedger:
             if wid in by_id or ref.g - first >= 2:
                 del missing[wid]
         for ws in tr.last[0].stones:
-            if ws.id not in by_id:
+            if ws.id not in by_id and not ws.under_sheet:
                 missing[ws.id] = ref.g
         return bool(missing)
 
@@ -1743,6 +1954,7 @@ class TrayLedger:
             ws.id
             for ws in stones
             if ws.id != anchor.id
+            and not ws.under_sheet
             and (ws.detected or include_kept)
             and ws.mode not in _HELD
             and compatible(size_of(ws), size)
@@ -1783,7 +1995,13 @@ class TrayLedger:
         if silent and tr.last_undisturbed:
             for ws in previous.stones:
                 wid = ws.id
-                if wid not in by_id and ws.detected and ws.mode not in _HELD and (wid in tr.link or wid in tr.unid):
+                if (
+                    wid not in by_id
+                    and not ws.under_sheet
+                    and ws.detected
+                    and ws.mode not in _HELD
+                    and (wid in tr.link or wid in tr.unid)
+                ):
                     near = self._blink_neighbours(ws, w.stones)
                     neighbours = self._blink_neighbours(ws, previous.stones)
                     if near <= neighbours:
@@ -1793,7 +2011,7 @@ class TrayLedger:
                         others = tuple(
                             (place_of(other), size_of(other))
                             for other in previous.stones
-                            if other.id != wid and other.detected and other.mode not in _HELD
+                            if other.id != wid and not other.under_sheet and other.detected and other.mode not in _HELD
                         )
                         tr.blinks[wid] = _Blink(ref, ws, unid, near, others)
 
@@ -1823,10 +2041,15 @@ class TrayLedger:
         tr.board = None if w.draw is None else w.draw.board
         st = stamp(ref.wall, ref.t, self._session)
         for ws in w.stones:
-            if ws.mode in _HELD or not inside_board(tr.board, place_of(ws)):
+            if (
+                ws.mode in _HELD
+                or (ws.under_sheet and ws.id not in self._visit_seen)
+                or not inside_board(tr.board, place_of(ws))
+            ):
                 continue
             s = self._new(tr, f"{st}-{tr.n}-{ws.id}", ws, ref)
-            s.calm_place = s.place if ws.detected else None
+            s.under_sheet = ws.under_sheet
+            s.calm_place = s.place if ws.detected and not ws.under_sheet else None
             tr.stones.append(s)
             tr.link[ws.id] = s
         self._c.arrived += 1
@@ -1863,7 +2086,9 @@ class TrayLedger:
         tr.calm_ref, tr.worked = ref, False
 
     @staticmethod
-    def _lose(tr: _Tray, s: _Stone, ref: TrayPoint) -> None:
+    def _lose(tr: _Tray, s: _Stone, ref: TrayPoint, *, sheet: bool = False) -> None:
+        s.under_sheet, s.sheet_since = False, None
+        s.sheet_loss = sheet
         s.run1 = None  # a lost stone's unseen run ends (4.6.1): never spoilt while unlinked; on probation, it fails
         s.world, s.status, s.lost_t, s.lost_k = None, "lost", ref.t, tr.k
         s.lost_g, s.lost_by_look = ref.g, False
@@ -1955,6 +2180,7 @@ class TrayLedger:
         run: a sight there can not tell the two apart (4.6.1)."""
         return any(
             ws.id != w.wid
+            and not ws.under_sheet
             and ws.mode not in _HELD
             and compatible(size_of(ws), s.size)
             and dist(place_of(ws), w.place) <= NEAR
@@ -2144,7 +2370,7 @@ class TrayLedger:
         final: bool = False,
     ) -> None:
         t, k = ref.t, tr.k
-        world = [ws for ws in w.stones if ws.mode not in _HELD]
+        world = [ws for ws in w.stones if ws.mode not in _HELD and not ws.under_sheet]
         births: list[tuple[Place, Size]] = [
             (u.place, u.size) for _, u in sorted(tr.unid.items()) if u.born.t > tr.settle_t
         ]
@@ -2161,7 +2387,7 @@ class TrayLedger:
         sp = self._leaving_answer(tr, ref) if final else None
         paired = set() if sp is None else {t[0].index for t in self._speckle_targets(tr, sp, by_id)}
         for s in tr.stones:
-            if s.status != "on" or not s.sure or s.at_k != k or s.index in paired:
+            if s.under_sheet or s.status != "on" or not s.sure or s.at_k != k or s.index in paired:
                 continue
             ws = by_id.get(s.world) if s.world is not None else None
             partial = self._partial_unseen.get(s.index)
@@ -2251,7 +2477,7 @@ class TrayLedger:
         for s in tr.stones:
             if tr.relinked:
                 break
-            if s.status != "lost" or (s.lost_k >= k and t - s.lost_t < RENAME_T):
+            if s.status != "lost" or s.sheet_loss or (s.lost_k >= k and t - s.lost_t < RENAME_T):
                 continue
             if any(covers(ws, s.place, MARGIN) for ws in world) or self._rivals(tr, s) or not self._hand_took(s):
                 continue
@@ -2311,9 +2537,11 @@ class TrayLedger:
             ws = tr.point.get(c, by_id.get(c))
             if (
                 s is None
+                or s.under_sheet
                 or s.added
                 or s.status not in ("on", "lost")
                 or ws is None
+                or ws.under_sheet
                 or ws.mode in _HELD
                 or c in claimed
                 or s.index in used
@@ -2428,6 +2656,11 @@ class TrayLedger:
             self._relink(tr, tr.stones[i], wid, by_id, False, why, "matched_at_leaving", ref, out)
         for s in tr.stones:
             if s.status == "lost":
+                if s.sheet_loss:
+                    s.status = "on"
+                    if s.sure:
+                        self._unsure(tr, s, "its track ended when the paper lifted", "unseen", ref, out)
+                    continue
                 s.status, s.certain, s.left_now = "removed", False, True
                 tr.unclear += 1
                 self._c.removed_unclear += 1
@@ -2505,7 +2738,7 @@ class TrayLedger:
         for wid in [wid for wid in store if wid not in by_id]:
             del store[wid]
         for ws in w.stones:
-            if ws.mode in _HELD or not inside_board(tr.board, place_of(ws)):
+            if ws.under_sheet or ws.mode in _HELD or not inside_board(tr.board, place_of(ws)):
                 continue
             c = usable_look(ws.look)
             if c is not None:
@@ -2516,7 +2749,7 @@ class TrayLedger:
         """A stored look still describes its stone: the stone is here, not held, within NEAR of where the look was
         read, and no hand mark after the look lies within HAND_R of that place."""
         ws = by_id.get(e.wid)
-        if ws is None or ws.mode in _HELD or dist(place_of(ws), e.place) > NEAR:
+        if ws is None or ws.under_sheet or ws.mode in _HELD or dist(place_of(ws), e.place) > NEAR:
             return False
         for mt, mp in reversed(tr.marks):
             if mt <= e.t:
@@ -2611,7 +2844,7 @@ class TrayLedger:
 
     def _anchors(self, tr: _Tray, by_id: dict[int, StoneView]) -> None:
         for s in tr.stones:
-            if s.status != "on" or s.chain or s.world is None:
+            if s.under_sheet or s.status != "on" or s.chain or s.world is None:
                 continue
             e = tr.store.get(s.world)
             if e is None or not e.taken or not self._fresh(tr, e, by_id):
@@ -2632,7 +2865,7 @@ class TrayLedger:
         tid, store = self._t_id(tr), tr.store
         rows: list[tuple[_Stone, int]] = []
         for s in tr.stones:
-            if not s.chain or not s.sure:
+            if s.under_sheet or not s.chain or not s.sure:
                 continue
             q = s.question
             if s.status == "on" and q is not None:
@@ -2645,7 +2878,7 @@ class TrayLedger:
         cols: list[StoneView] = []
         for ws in w.stones:
             wid = ws.id
-            if ws.mode in _HELD or not inside_board(tr.board, place_of(ws)):
+            if ws.under_sheet or ws.mode in _HELD or not inside_board(tr.board, place_of(ws)):
                 continue
             e = store.get(wid)
             if e is None or not e.taken or not self._fresh(tr, e, by_id):
@@ -2821,7 +3054,10 @@ class TrayLedger:
         free = [
             ws
             for ws in w.stones
-            if ws.mode not in _HELD and inside_board(tr.board, place_of(ws)) and ws.id not in sure_world
+            if not ws.under_sheet
+            and ws.mode not in _HELD
+            and inside_board(tr.board, place_of(ws))
+            and ws.id not in sure_world
         ]
         stone_on = {s.world: s.id for s in tr.stones if s.status == "on"}
         entries: list[TrayOpen] = []
@@ -2862,7 +3098,7 @@ class TrayLedger:
             cause = "relinked"
         elif s.lost_k == tr.k:
             cause = "lost_late"
-        elif any(ws.mode not in _HELD and covers(ws, s.place, MARGIN) for ws in w.stones):
+        elif any(not ws.under_sheet and ws.mode not in _HELD and covers(ws, s.place, MARGIN) for ws in w.stones):
             cause = "covered"
         elif self._rivals(tr, s):
             cause = "rivals"
@@ -2892,7 +3128,10 @@ class TrayLedger:
         scores = {wid: sc for wid, sc, _ in ps}
         cands: list[TrayCandidate] = []
         if s.status == "on":
-            cands.append(TrayCandidate("world", s.world, s.id, scores.get(s.world) if s.world is not None else None))
+            if s.world is None:
+                cands.append(TrayCandidate("unseen"))
+            else:
+                cands.append(TrayCandidate("world", s.world, s.id, scores.get(s.world)))
         near = [
             ws
             for ws in free
@@ -2976,7 +3215,11 @@ class TrayLedger:
     @staticmethod
     def _observed_place(s: _Stone, by_id: dict[int, StoneView]) -> Place | None:
         ws = by_id.get(s.world) if s.world is not None else None
-        return place_of(ws) if s.status == "on" and ws is not None and ws.detected and ws.mode not in _HELD else None
+        return (
+            place_of(ws)
+            if s.status == "on" and ws is not None and not ws.under_sheet and ws.detected and ws.mode not in _HELD
+            else None
+        )
 
     def _finish_blinks(self, tr: _Tray) -> None:
         for wid, blink in tr.blinks.items():
@@ -2984,7 +3227,9 @@ class TrayLedger:
                 self._lose(tr, tr.link.pop(wid), blink.first)
         tr.blinks.clear()
 
-    def _close(self, out: list[TrayFact]) -> None:
+    def _close(
+        self, out: list[TrayFact], boundary: TrayPoint | None = None, lifted: list[_Stone] | None = None
+    ) -> None:
         """The open tray leaves: its final account (section 4.6, Leaving), then it goes to `on_close`."""
         tr = self._tray
         if tr is None:
@@ -2999,7 +3244,7 @@ class TrayLedger:
         leave = tr.calm_ref if (tr.calm_ref is not None and not tr.worked) else last
         if fallback is not None:
             leave = fallback.point
-        tr.leaving = leave
+        tr.leaving = boundary or leave
         by_id = {ws.id: ws for ws in w.stones}
         for s in tr.stones:  # its place at the leaving point, if it was seen there (4.7), before the last settle
             if fallback is not None:
@@ -3014,7 +3259,11 @@ class TrayLedger:
         links = {s.id: s.world for s in tr.stones if s.status == "on"}
         point_world = fallback.world if fallback is not None else (tr.calm_world if leave is tr.calm_ref else w)
         assert point_world is not None
-        places = {ws.id: place_of(ws) for ws in point_world.stones if ws.detected and ws.mode not in _HELD}
+        places = {
+            ws.id: place_of(ws)
+            for ws in point_world.stones
+            if not ws.under_sheet and ws.detected and ws.mode not in _HELD
+        }
         tr.point = {ws.id: ws for ws in point_world.stones}
         self._settle(tr, w, leave, by_id, out, final=True)
         on = [s for s in tr.stones if s.status == "on"]
@@ -3023,17 +3272,22 @@ class TrayLedger:
                 s.left_place = places.get(s.world)
         for s in tr.stones:
             s.evidence = _stone_evidence(tr, s)
+        under = sum(s.under_sheet for s in on)
+        self._c.under_sheet += under
+        self._sheet_laid(tr, on, tr.leaving, out)
+        self._sheet_fact(tr, lifted or [], "sheet_lifted", tr.leaving, out)
         self._fact(
             "leaving",
             tr,
             None,
-            leave,
+            tr.leaving,
             out,
             stones=len(on),
             sure=sum(1 for s in on if s.sure),
             added=tr.certain_added,  # a stone added for certain stays counted when it is removed unclear later
             removed=sum(1 for s in tr.stones if s.status == "removed" and s.certain),
             unclear=tr.unclear,
+            under_sheet=under or None,
             open=tuple(tr.open or ()),
             t_id=self._t_id(tr) if tr.took else None,
         )
